@@ -19,7 +19,7 @@
         <header class="topnav">
             <div class="topnav-inner">
                 <div class="brand">
-                    <div class="brand-mark">A</div>
+                    <div class="brand-mark aegis-shield" title="Aegis">Æ</div>
                     <span>Aegis</span>
                     <span class="brand-divider"></span>
                     <span class="brand-host" id="brandHost">aegis-prime-01</span>
@@ -78,67 +78,84 @@
             </div>
         </header>
 
-        <!-- METRIC CARDS -->
-        <div class="metrics-grid">
-            <div class="metric-card" id="cpuCard">
-                <div class="metric-head">
-                    <span class="metric-label">CPU</span>
-                    <span class="metric-icon"><svg class="icon"><use href="#i-cpu"/></svg></span>
+        <!-- AEGIS PILLAR KPI HERO — 4 big infrastructure pillars at the top -->
+        <div class="pillar-grid">
+            <div class="pillar-card" id="pillarServices">
+                <div class="pillar-head">
+                    <div class="pillar-icon-wrap">
+                        <svg class="icon"><use href="#i-server"/></svg>
+                    </div>
+                    <div>
+                        <div class="pillar-label">Services</div>
+                        <div class="pillar-sub" id="pillarServicesSub">— monitored</div>
+                    </div>
                 </div>
-                <div class="metric-value"><span id="cpuValue">0.0</span><span class="metric-unit">%</span></div>
-                <div class="metric-sub" id="cpuSub">—</div>
-                <div class="metric-bar"><div class="metric-bar-fill" id="cpuBar" style="width:0%"></div></div>
+                <div class="pillar-value">
+                    <span id="pillarServicesValue">—</span>
+                    <span class="pillar-unit">/<span id="pillarServicesTotal">—</span></span>
+                </div>
+                <div class="pillar-meta" id="pillarServicesMeta">healthy</div>
             </div>
 
-            <div class="metric-card" id="memCard">
-                <div class="metric-head">
-                    <span class="metric-label">Memory</span>
-                    <span class="metric-icon"><svg class="icon"><use href="#i-memory"/></svg></span>
+            <div class="pillar-card" id="pillarSecurity">
+                <div class="pillar-head">
+                    <div class="pillar-icon-wrap">
+                        <svg class="icon"><use href="#i-shield"/></svg>
+                    </div>
+                    <div>
+                        <div class="pillar-label">Security</div>
+                        <div class="pillar-sub" id="pillarSecuritySub">auth · certs · ports</div>
+                    </div>
                 </div>
-                <div class="metric-value"><span id="memValue">0.0</span><span class="metric-unit">%</span></div>
-                <div class="metric-sub" id="memSub">—</div>
-                <div class="metric-bar"><div class="metric-bar-fill" id="memBar" style="width:0%"></div></div>
+                <div class="pillar-value">
+                    <span id="pillarSecurityValue">0</span>
+                    <span class="pillar-unit">issues</span>
+                </div>
+                <div class="pillar-meta" id="pillarSecurityMeta">no threats</div>
             </div>
 
-            <div class="metric-card" id="diskCard">
-                <div class="metric-head">
-                    <span class="metric-label">Disk</span>
-                    <span class="metric-icon"><svg class="icon"><use href="#i-hard-drive"/></svg></span>
+            <div class="pillar-card" id="pillarNetwork">
+                <div class="pillar-head">
+                    <div class="pillar-icon-wrap">
+                        <svg class="icon"><use href="#i-globe"/></svg>
+                    </div>
+                    <div>
+                        <div class="pillar-label">Network</div>
+                        <div class="pillar-sub" id="pillarNetworkSub">uplink · DNS · gateway</div>
+                    </div>
                 </div>
-                <div class="metric-value"><span id="diskValue">0.0</span><span class="metric-unit">%</span></div>
-                <div class="metric-sub" id="diskSub">—</div>
-                <div class="metric-bar"><div class="metric-bar-fill" id="diskBar" style="width:0%"></div></div>
+                <div class="pillar-value">
+                    <span id="pillarNetworkValue">—</span>
+                    <span class="pillar-unit">links</span>
+                </div>
+                <div class="pillar-meta" id="pillarNetworkMeta">healthy</div>
             </div>
 
-            <div class="metric-card">
-                <div class="metric-head">
-                    <span class="metric-label">Processes</span>
-                    <span class="metric-icon"><svg class="icon"><use href="#i-server"/></svg></span>
+            <div class="pillar-card" id="pillarInfra">
+                <div class="pillar-head">
+                    <div class="pillar-icon-wrap">
+                        <svg class="icon"><use href="#i-database"/></svg>
+                    </div>
+                    <div>
+                        <div class="pillar-label">Infrastructure</div>
+                        <div class="pillar-sub" id="pillarInfraSub">backup · NTP · hardware</div>
+                    </div>
                 </div>
-                <div class="metric-value" id="procValue">0</div>
-                <div class="metric-sub" id="procSub">—</div>
-                <div class="metric-bar"><div class="metric-bar-fill" id="procBar" style="width:0%"></div></div>
+                <div class="pillar-value">
+                    <span id="pillarInfraValue">—</span>
+                </div>
+                <div class="pillar-meta" id="pillarInfraMeta">all systems nominal</div>
             </div>
+        </div>
 
-            <div class="metric-card">
-                <div class="metric-head">
-                    <span class="metric-label">Network</span>
-                    <span class="metric-icon"><svg class="icon"><use href="#i-network"/></svg></span>
-                </div>
-                <div class="metric-value" id="netValue">0</div>
-                <div class="metric-sub" id="netSub">—</div>
-                <div class="metric-bar"><div class="metric-bar-fill" id="netBar" style="width:0%"></div></div>
-            </div>
-
-            <div class="metric-card" id="aiCard">
-                <div class="metric-head">
-                    <span class="metric-label">Anomaly</span>
-                    <span class="metric-icon"><svg class="icon"><use href="#i-brain"/></svg></span>
-                </div>
-                <div class="metric-value" id="aiScoreValue">0.00</div>
-                <div class="metric-sub" id="aiSub">not trained</div>
-                <div class="metric-bar"><div class="metric-bar-fill" id="aiBar" style="width:0%"></div></div>
-            </div>
+        <!-- HIDDEN: legacy metric IDs preserved for defender.js compatibility -->
+        <div style="display: none;" aria-hidden="true">
+            <span id="cpuValue">0</span><span id="cpuSub"></span><div id="cpuBar"></div><div id="cpuCard"></div>
+            <span id="memValue">0</span><span id="memSub"></span><div id="memBar"></div><div id="memCard"></div>
+            <span id="diskValue">0</span><span id="diskSub"></span><div id="diskBar"></div><div id="diskCard"></div>
+            <span id="procValue">0</span><span id="procSub"></span><div id="procBar"></div>
+            <span id="netValue">0</span><span id="netSub"></span><div id="netBar"></div>
+            <span id="aiScoreValue">0</span><span id="aiSub"></span><div id="aiBar"></div><div id="aiCard"></div>
         </div>
 
         <!-- AI LIVE SOLVE — demo-grade step-by-step problem solving -->
@@ -555,6 +572,16 @@
                     </li>
                 </ul>
             </div>
+        </div>
+
+        <!-- COMPACT SYSTEM METRICS — secondary/legacy CPU/RAM/Disk strip -->
+        <div class="sysmetrics-strip" id="sysmetricStrip" title="Underlying performance metrics — secondary view">
+            <div class="sysmetric"><span class="sysmetric-label">CPU</span><span class="sysmetric-val">—</span></div>
+            <div class="sysmetric"><span class="sysmetric-label">Memory</span><span class="sysmetric-val">—</span></div>
+            <div class="sysmetric"><span class="sysmetric-label">Disk</span><span class="sysmetric-val">—</span></div>
+            <div class="sysmetric"><span class="sysmetric-label">Processes</span><span class="sysmetric-val">—</span></div>
+            <div class="sysmetric"><span class="sysmetric-label">Net Conn</span><span class="sysmetric-val">—</span></div>
+            <div class="sysmetric"><span class="sysmetric-label">Anomaly</span><span class="sysmetric-val">—</span></div>
         </div>
     </div>
 

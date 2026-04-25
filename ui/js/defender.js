@@ -1349,12 +1349,128 @@ async function unblockIp(ip) {
     } catch (e) { toast('Unblock failed', 'danger'); }
 }
 
+async function updatePillars() {
+    // Aggregate data from all 4 endpoints to populate pillar KPI cards
+    try {
+        const [svcR, netR, certsR, portsR, authR, infraR] = await Promise.all([
+            fetch(`${API_BASE}/api/services`).then(r => r.json()),
+            fetch(`${API_BASE}/api/network`).then(r => r.json()),
+            fetch(`${API_BASE}/api/security/certs`).then(r => r.json()),
+            fetch(`${API_BASE}/api/security/ports`).then(r => r.json()),
+            fetch(`${API_BASE}/api/security/auth_events?limit=1`).then(r => r.json()),
+            fetch(`${API_BASE}/api/infra`).then(r => r.json()),
+        ]);
+
+        // ─── SERVICES PILLAR ───
+        const services = svcR.services || [];
+        const upCount = services.filter(s => s.status === 'up').length;
+        const downCount = services.filter(s => s.status === 'down').length;
+        const degCount = services.filter(s => s.status === 'degraded').length;
+        setText('pillarServicesValue', upCount);
+        setText('pillarServicesTotal', services.length);
+        const svcCard = document.getElementById('pillarServices');
+        if (svcCard) {
+            svcCard.classList.remove('warning', 'critical');
+            if (downCount > 0) {
+                svcCard.classList.add('critical');
+                setText('pillarServicesMeta', `${downCount} down · ${degCount} degraded`);
+            } else if (degCount > 0) {
+                svcCard.classList.add('warning');
+                setText('pillarServicesMeta', `${degCount} degraded`);
+            } else {
+                setText('pillarServicesMeta', 'all healthy');
+            }
+        }
+        setText('pillarServicesSub', services.map(s => s.id).join(' · ') || '— monitored');
+
+        // ─── SECURITY PILLAR ───
+        const failed5m = authR.stats?.failed_5m || 0;
+        const blocked = authR.stats?.blocked_ips || 0;
+        const certsExpiring = (certsR.certs || []).filter(c => c.days_to_expiry <= 30 && !c.is_expired).length;
+        const certsCrit = (certsR.certs || []).filter(c => c.is_expired || c.days_to_expiry <= 7).length;
+        const portsCrit = (portsR.ports || []).filter(p => p.severity === 'critical').length;
+        const totalIssues = (failed5m > 10 ? 1 : 0) + certsExpiring + portsCrit;
+        setText('pillarSecurityValue', totalIssues);
+        const secCard = document.getElementById('pillarSecurity');
+        if (secCard) {
+            secCard.classList.remove('warning', 'critical');
+            if (portsCrit > 0 || failed5m > 30 || certsCrit > 0) {
+                secCard.classList.add('critical');
+                setText('pillarSecurityMeta', portsCrit > 0 ? `${portsCrit} forbidden port open` : (failed5m > 30 ? `${failed5m} auth failures/5m` : `${certsCrit} certs expiring`));
+            } else if (totalIssues > 0) {
+                secCard.classList.add('warning');
+                setText('pillarSecurityMeta', `${failed5m} fails · ${certsExpiring} certs · ${portsCrit} ports`);
+            } else {
+                setText('pillarSecurityMeta', `${blocked} blocked · all clean`);
+            }
+        }
+
+        // ─── NETWORK PILLAR ───
+        const links = netR.links || [];
+        const linksOk = links.filter(l => l.status === 'healthy').length;
+        const linksDown = links.filter(l => l.status === 'down').length;
+        setText('pillarNetworkValue', `${linksOk}/${links.length}`);
+        const netCard = document.getElementById('pillarNetwork');
+        if (netCard) {
+            netCard.classList.remove('warning', 'critical');
+            if (linksDown > 0) {
+                netCard.classList.add('critical');
+                setText('pillarNetworkMeta', `${links.filter(l => l.status === 'down').map(l => l.name).join(', ')} down`);
+            } else if (linksOk < links.length) {
+                netCard.classList.add('warning');
+                setText('pillarNetworkMeta', `${links.length - linksOk} degraded`);
+            } else {
+                setText('pillarNetworkMeta', 'all reachable');
+            }
+        }
+
+        // ─── INFRA PILLAR ───
+        const issues = [];
+        if (infraR.backup?.last_status === 'failed') issues.push('backup');
+        if (infraR.backup?.is_overdue) issues.push('backup overdue');
+        if (infraR.ntp?.is_drifted) issues.push('NTP drift');
+        if (infraR.hardware?.has_warning) issues.push('hardware');
+        if (infraR.os_updates?.security_count > 0) issues.push(`${infraR.os_updates.security_count} sec updates`);
+        const infraCard = document.getElementById('pillarInfra');
+        setText('pillarInfraValue', issues.length === 0 ? 'OK' : issues.length);
+        if (infraCard) {
+            infraCard.classList.remove('warning', 'critical');
+            if (infraR.backup?.last_status === 'failed') {
+                infraCard.classList.add('critical');
+            } else if (issues.length > 0) {
+                infraCard.classList.add('warning');
+            }
+            setText('pillarInfraMeta', issues.length === 0 ? 'all systems nominal' : issues.join(' · '));
+        }
+
+        // Populate compact sysmetrics strip from latest metric (if exists)
+        const cpu = parseFloat(document.getElementById('cpuValue')?.textContent || 0);
+        const mem = parseFloat(document.getElementById('memValue')?.textContent || 0);
+        const disk = parseFloat(document.getElementById('diskValue')?.textContent || 0);
+        const net = document.getElementById('netValue')?.textContent || '0';
+        const proc = document.getElementById('procValue')?.textContent || '0';
+        const ai = document.getElementById('aiScoreValue')?.textContent || '0.00';
+        const sm = document.getElementById('sysmetricStrip');
+        if (sm) {
+            sm.innerHTML = `
+                <div class="sysmetric"><span class="sysmetric-label">CPU</span><span class="sysmetric-val">${cpu.toFixed(1)}%</span><div class="sysmetric-bar"><div class="sysmetric-bar-fill" style="width:${Math.min(100,cpu)}%"></div></div></div>
+                <div class="sysmetric"><span class="sysmetric-label">Memory</span><span class="sysmetric-val">${mem.toFixed(1)}%</span><div class="sysmetric-bar"><div class="sysmetric-bar-fill" style="width:${Math.min(100,mem)}%"></div></div></div>
+                <div class="sysmetric"><span class="sysmetric-label">Disk</span><span class="sysmetric-val">${disk.toFixed(1)}%</span><div class="sysmetric-bar"><div class="sysmetric-bar-fill" style="width:${Math.min(100,disk)}%"></div></div></div>
+                <div class="sysmetric"><span class="sysmetric-label">Processes</span><span class="sysmetric-val">${proc}</span></div>
+                <div class="sysmetric"><span class="sysmetric-label">Net Conn</span><span class="sysmetric-val">${net}</span></div>
+                <div class="sysmetric"><span class="sysmetric-label">Anomaly</span><span class="sysmetric-val">${ai}</span></div>
+            `;
+        }
+    } catch (e) { /* silent */ }
+}
+
 function fetchAegisAll() {
     fetchAegisServices();
     fetchAegisNetwork();
     fetchAegisSecurity();
     fetchAegisInfra();
     fetchAuthFeed();
+    updatePillars();
 }
 
 // ============================================================
