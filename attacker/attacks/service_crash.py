@@ -59,7 +59,7 @@ class ServiceCrashAttack(BaseAttack):
             self.stop(stopped_by="overlay_failed")
             return
 
-        bus.publish(Topics.EVENT, {
+        bus.publish("event", {
             "category": "service",
             "level": "CRITICAL" if mode == "crash" else "WARNING",
             "message": f"Service incident: {human}",

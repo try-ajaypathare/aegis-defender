@@ -276,7 +276,7 @@ def create_app(predictor: Predictor | None = None, orchestrator = None) -> FastA
         if not ok:
             raise HTTPException(404, f"Unknown service: {service_id}")
         rec = service_state.get(service_id)
-        bus.publish(Topics.EVENT, {
+        bus.publish("event", {
             "category": "service",
             "level": "INFO",
             "message": f"Service {rec.name if rec else service_id} restart requested",
@@ -301,7 +301,7 @@ def create_app(predictor: Predictor | None = None, orchestrator = None) -> FastA
         if not ip:
             raise HTTPException(400, "ip required")
         auth_state.block_ip(ip, duration_s=duration, reason="manual_block")
-        bus.publish(Topics.EVENT, {
+        bus.publish("event", {
             "category": "security",
             "level": "INFO",
             "message": f"IP {ip} blocked for {int(duration//60)}m",

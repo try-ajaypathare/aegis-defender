@@ -31,6 +31,20 @@ from attacker.attacks.cryptomining_sim import CryptominingSim
 from attacker.attacks.ransomware_sim import RansomwareSim
 from attacker.attacks.service_crash import ServiceCrashAttack
 
+# Phase 2 — security
+from attacker.attacks.ssh_brute_force import SSHBruteForce
+from attacker.attacks.cert_expire import CertExpire
+from attacker.attacks.port_expose import PortExpose
+
+# Phase 3 — network
+from attacker.attacks.dns_blackhole import DNSBlackhole
+from attacker.attacks.gateway_drop import GatewayDrop
+
+# Phase 4 — infra
+from attacker.attacks.backup_fail import BackupFail
+from attacker.attacks.ntp_drift import NTPDrift
+from attacker.attacks.hardware_warning import HardwareWarning
+
 
 REGISTRY: dict[str, Type[BaseAttack]] = {
     # ─────── Performance (resource pressure) ───────
@@ -45,8 +59,22 @@ REGISTRY: dict[str, Type[BaseAttack]] = {
     "cryptomining_sim": CryptominingSim,
     "ransomware_sim":   RansomwareSim,
 
-    # ─────── Service (NEW — Phase 1) ───────
+    # ─────── Service (Phase 1) ───────
     "service_crash":    ServiceCrashAttack,
+
+    # ─────── Security (Phase 2) ───────
+    "ssh_brute_force":  SSHBruteForce,
+    "cert_expire":      CertExpire,
+    "port_expose":      PortExpose,
+
+    # ─────── Network (Phase 3) ───────
+    "dns_blackhole":    DNSBlackhole,
+    "gateway_drop":     GatewayDrop,
+
+    # ─────── Infrastructure (Phase 4) ───────
+    "backup_fail":      BackupFail,
+    "ntp_drift":        NTPDrift,
+    "hardware_warning": HardwareWarning,
 }
 
 
