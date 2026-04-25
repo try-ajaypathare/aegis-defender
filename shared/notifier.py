@@ -64,7 +64,7 @@ def send_discord(webhook_url: str, message: str, level: Level = "info") -> bool:
         color_map = {"info": 3447003, "warning": 16776960, "critical": 15158332}
         payload = {
             "embeds": [{
-                "title": f"Argus Alert ({level.upper()})",
+                "title": f"Aegis Alert ({level.upper()})",
                 "description": message,
                 "color": color_map.get(level, 3447003),
             }]
@@ -135,6 +135,6 @@ def notify(
             cfg.notifications.email.username,
             cfg.notifications.email.password,
             cfg.notifications.email.recipients,
-            subject=f"[Argus] {title}",
+            subject=f"[Aegis] {title}",
             body=message,
         )

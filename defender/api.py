@@ -87,7 +87,7 @@ class ConnectionManager:
 
 
 def create_app(predictor: Predictor | None = None, orchestrator = None) -> FastAPI:
-    app = FastAPI(title="Argus Defender", version="1.0.0")
+    app = FastAPI(title="Aegis Defender", version="1.0.0")
 
     # CORS — allow attacker dashboard (port 8001) to read defender metrics
     app.add_middleware(
@@ -154,7 +154,7 @@ def create_app(predictor: Predictor | None = None, orchestrator = None) -> FastA
         index = UI_DIR / "defender.html"
         if index.exists():
             return FileResponse(index)
-        return {"name": "Argus Defender", "status": "UI not found"}
+        return {"name": "Aegis Defender", "status": "UI not found"}
 
     @app.get("/api/metrics/current", dependencies=[Depends(verify_token)])
     async def current_metric():

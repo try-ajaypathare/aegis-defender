@@ -55,7 +55,7 @@ class SafetyGuard:
 
         if count > 0:
             notify(
-                "Argus: Kill Switch",
+                "Aegis: Kill Switch",
                 f"Stopped {count} active attack(s)",
                 level="warning",
             )

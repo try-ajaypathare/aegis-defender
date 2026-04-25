@@ -174,6 +174,125 @@ class InvestigatorTools:
                 return {"terminated": True, "target": target}
         return {"terminated": False, "reason": f"no simulation matches '{simulation_name}'"}
 
+    # ─────── Aegis multi-pillar inspection ───────
+
+    @staticmethod
+    def inspect_services() -> dict:
+        """Snapshot of monitored services (Apache, MySQL, Redis, App)."""
+        from shared.state import service_state
+        items = service_state.all_dict()
+        return {
+            "total": len(items),
+            "down": [s["id"] for s in items if s["status"] == "down"],
+            "degraded": [s["id"] for s in items if s["status"] == "degraded"],
+            "simulated": [s["id"] for s in items if s["is_simulated"]],
+            "details": [{
+                "id": s["id"], "name": s["name"], "status": s["status"],
+                "latency_ms": s["latency_ms"], "is_simulated": s["is_simulated"],
+                "sim_reason": s["sim_reason"],
+            } for s in items],
+        }
+
+    @staticmethod
+    def inspect_auth_log(window_seconds: int = 300) -> dict:
+        """Failed-login summary in the last N seconds, plus IP threats."""
+        from shared.state import auth_state
+        recent = auth_state.recent_events(50)
+        failed_by_ip = auth_state.failed_by_ip(window_seconds)
+        threats = auth_state.all_threats()
+        return {
+            "stats": auth_state.stats(),
+            "failed_by_ip": failed_by_ip,
+            "top_threats": sorted(threats, key=lambda t: t["threat_score"], reverse=True)[:5],
+            "recent_sample": recent[-10:],
+        }
+
+    @staticmethod
+    def inspect_certs() -> dict:
+        """SSL certs and time-to-expiry."""
+        from shared.state import cert_state
+        certs = cert_state.all_dict()
+        warning = [c for c in certs if 0 < c["days_to_expiry"] <= 30]
+        critical = [c for c in certs if c["days_to_expiry"] <= 7]
+        return {
+            "total": len(certs),
+            "expiring_30d": len(warning),
+            "critical_7d": len(critical),
+            "expired": [c for c in certs if c["is_expired"]],
+            "details": certs,
+        }
+
+    @staticmethod
+    def inspect_ports() -> dict:
+        """Port audit: which ports are open vs expected/forbidden."""
+        from shared.state import network_state
+        ports = network_state.all_ports()
+        critical = [p for p in ports if p["severity"] == "critical"]
+        warning = [p for p in ports if p["severity"] == "warning"]
+        return {
+            "total": len(ports),
+            "open": [p["port"] for p in ports if p["open"]],
+            "forbidden_open": critical,
+            "warnings": warning,
+        }
+
+    @staticmethod
+    def inspect_network() -> dict:
+        """Internet/gateway/DNS link status."""
+        from shared.state import network_state
+        links = network_state.all_links()
+        return {
+            "total": len(links),
+            "down": [l["name"] for l in links if l["status"] == "down"],
+            "degraded": [l["name"] for l in links if l["status"] == "degraded"],
+            "details": links,
+        }
+
+    @staticmethod
+    def inspect_infra() -> dict:
+        """Backup, NTP, OS updates, hardware snapshot."""
+        from shared.state import infra_state
+        return infra_state.snapshot()
+
+    @staticmethod
+    def try_restart_service(service_id: str) -> dict:
+        """Clear a service's simulation overlay (defender restart action)."""
+        from shared.state import service_state
+        ok = service_state.clear_overlay(service_id)
+        if not ok:
+            return {"applied": False, "reason": f"unknown service '{service_id}'"}
+        rec = service_state.get(service_id)
+        return {
+            "applied": True,
+            "service": service_id,
+            "new_status": rec.effective_status() if rec else "unknown",
+            "restart_count": rec.restart_count if rec else 0,
+        }
+
+    @staticmethod
+    def try_block_ip(ip: str, duration_minutes: int = 15) -> dict:
+        """Block a suspicious IP (defender action)."""
+        from shared.state import auth_state
+        ok = auth_state.block_ip(ip, duration_s=duration_minutes * 60, reason="ai_decision")
+        return {"applied": ok, "ip": ip, "duration_minutes": duration_minutes}
+
+    @staticmethod
+    def try_rotate_cert(domain: str) -> dict:
+        """Rotate an SSL cert (defender action)."""
+        from shared.state import cert_state
+        ok = cert_state.rotate(domain)
+        if not ok:
+            return {"applied": False, "reason": f"unknown domain '{domain}'"}
+        cert = cert_state.get(domain)
+        return {"applied": True, "domain": domain, "new_days_to_expiry": cert.days_to_expiry() if cert else None}
+
+    @staticmethod
+    def try_close_port(port: int) -> dict:
+        """Close a forbidden open port (defender action)."""
+        from shared.state import network_state
+        ok = network_state.close_port_action(port)
+        return {"applied": ok, "port": port}
+
 
 # ============================================================
 # Investigation orchestrator
@@ -221,7 +340,8 @@ class Investigation:
         }
 
 
-SYSTEM_PROMPT = """You are Argus, a senior SOC analyst doing a brief investigation.
+SYSTEM_PROMPT = """You are Aegis, a senior SOC analyst doing a brief investigation
+across SERVICES, SECURITY, NETWORK, and INFRASTRUCTURE pillars.
 You have TOOLS to inspect data and take actions.
 
 OUTPUT FORMAT: ONLY a single valid JSON object. No markdown, no prose.
@@ -253,14 +373,35 @@ CRITICAL TIMING RULES:
 
 
 TOOL_DESCRIPTIONS = """Available tools:
-- inspect_metric(name, window_seconds): see metric history. names: cpu, memory, disk, process_count, network_connections
+
+PERFORMANCE / METRICS
+- inspect_metric(name, window_seconds): metric history. names: cpu, memory, disk, process_count, network_connections
 - inspect_offender(source_id): violation history of a source (IP or attack id)
 - inspect_attack_history(limit): recent attacks observed
 - inspect_active_simulations(): currently running simulated attacks
 - inspect_recent_events(limit, level): recent log events. level optional: INFO, WARN, ACTION, AI, SECURITY
 - wait_and_observe(seconds): pause N seconds and re-check metrics
-- try_throttle_simulation(simulation_name): apply throttle, return effect
+- try_throttle_simulation(simulation_name): apply throttle
 - try_terminate_simulation(simulation_name): kill simulation
+
+SERVICES (Apache / MySQL / Redis / App)
+- inspect_services(): status snapshot of all monitored services
+- try_restart_service(service_id): clear simulation overlay (heal a service). service_id: apache, mysql, redis, app
+
+SECURITY (auth log + certs + ports)
+- inspect_auth_log(window_seconds): failed-login summary, top threats, recent events
+- inspect_certs(): SSL certs with days-to-expiry
+- inspect_ports(): port audit (open vs expected vs forbidden)
+- try_block_ip(ip, duration_minutes): block an attacker IP
+- try_rotate_cert(domain): rotate SSL cert
+- try_close_port(port): close a forbidden open port
+
+NETWORK (uplink / DNS / gateway)
+- inspect_network(): internet/gateway/dns link status
+
+INFRASTRUCTURE (backup / NTP / hardware)
+- inspect_infra(): backup, NTP, OS updates, hardware snapshot
+
 - finalize: end investigation with recommendation"""
 
 
@@ -319,6 +460,7 @@ async def _ai_plan_step(inv: Investigation) -> dict:
 async def _execute_tool(tool: str, args: dict) -> dict:
     """Run the chosen tool."""
     tools_map = {
+        # Performance / metrics
         "inspect_metric":            InvestigatorTools.inspect_metric,
         "inspect_offender":          InvestigatorTools.inspect_offender,
         "inspect_attack_history":    InvestigatorTools.inspect_attack_history,
@@ -327,6 +469,17 @@ async def _execute_tool(tool: str, args: dict) -> dict:
         "wait_and_observe":          InvestigatorTools.wait_and_observe,
         "try_throttle_simulation":   InvestigatorTools.try_throttle_simulation,
         "try_terminate_simulation":  InvestigatorTools.try_terminate_simulation,
+        # Aegis multi-pillar
+        "inspect_services":          InvestigatorTools.inspect_services,
+        "inspect_auth_log":          InvestigatorTools.inspect_auth_log,
+        "inspect_certs":             InvestigatorTools.inspect_certs,
+        "inspect_ports":             InvestigatorTools.inspect_ports,
+        "inspect_network":           InvestigatorTools.inspect_network,
+        "inspect_infra":             InvestigatorTools.inspect_infra,
+        "try_restart_service":       InvestigatorTools.try_restart_service,
+        "try_block_ip":              InvestigatorTools.try_block_ip,
+        "try_rotate_cert":           InvestigatorTools.try_rotate_cert,
+        "try_close_port":            InvestigatorTools.try_close_port,
     }
     fn = tools_map.get(tool)
     if not fn:

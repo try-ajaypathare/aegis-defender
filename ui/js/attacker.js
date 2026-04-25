@@ -4,13 +4,20 @@ const API_BASE = window.location.origin;
 const DEFENDER_API = 'http://127.0.0.1:8000';
 
 const ATTACK_ICONS = {
+    // Performance
     cpu_spike: 'cpu', ram_flood: 'memory', disk_fill: 'hard-drive',
     traffic_flood: 'network', combo: 'layers', fork_bomb: 'package',
     slow_creep: 'trending-up', memory_leak: 'database',
     cryptomining_sim: 'flame', ransomware_sim: 'lock',
+    // Aegis
+    service_crash: 'server',
+    ssh_brute_force: 'lock', cert_expire: 'shield', port_expose: 'alert-triangle',
+    dns_blackhole: 'globe', gateway_drop: 'cloud-off',
+    backup_fail: 'database', ntp_drift: 'clock', hardware_warning: 'cpu',
 };
 
 const PRESETS = {
+    // Performance
     cpu_spike:        { light: { cores: 1, duration: 30 }, medium: { cores: 2, duration: 60 }, heavy: { cores: 4, duration: 120 } },
     ram_flood:        { light: { size_mb: 300, duration: 30 }, medium: { size_mb: 1000, duration: 60 }, heavy: { size_mb: 2000, duration: 120 } },
     disk_fill:        { light: { size_mb: 200, duration: 30 }, medium: { size_mb: 500, duration: 60 }, heavy: { size_mb: 1000, duration: 120 } },
@@ -21,6 +28,37 @@ const PRESETS = {
     memory_leak:      { light: { leak_rate_mb_per_sec: 5, duration: 60 }, medium: { leak_rate_mb_per_sec: 10, duration: 120 }, heavy: { leak_rate_mb_per_sec: 20, duration: 180 } },
     cryptomining_sim: { light: { cores: 1, duration: 60 }, medium: { cores: 2, duration: 120 }, heavy: { cores: 4, duration: 180 } },
     ransomware_sim:   { light: { duration: 20 }, medium: { duration: 40 }, heavy: { duration: 60 } },
+
+    // Aegis — Service
+    service_crash:    { light: { service_id: 'apache', mode: 'degrade', duration: 60 },
+                        medium: { service_id: 'mysql', mode: 'crash', duration: 120 },
+                        heavy: { service_id: 'apache', mode: 'crash', duration: 180 } },
+
+    // Aegis — Security
+    ssh_brute_force:  { light: { pattern: 'single_ip', attempts_per_second: 3, duration: 60 },
+                        medium: { pattern: 'single_ip', attempts_per_second: 10, duration: 90 },
+                        heavy: { pattern: 'distributed', attempts_per_second: 25, duration: 120 } },
+    cert_expire:      { light: { domain: 'cdn.example.com', target_days_remaining: 25, duration: 90 },
+                        medium: { domain: 'app.example.com', target_days_remaining: 5, duration: 120 },
+                        heavy: { domain: 'api.example.com', target_days_remaining: 1, duration: 180 } },
+    port_expose:      { light: { port: 23, process: 'inetd.exe', duration: 60 },
+                        medium: { port: 4444, process: 'unknown.exe', duration: 90 },
+                        heavy: { port: 5555, process: 'rev_shell.exe', duration: 120 } },
+
+    // Aegis — Network
+    dns_blackhole:    { light: { mode: 'degraded', duration: 30 },
+                        medium: { mode: 'down', duration: 60 },
+                        heavy: { mode: 'down', duration: 120 } },
+    gateway_drop:     { light: { target: 'gateway', mode: 'degraded', duration: 30 },
+                        medium: { target: 'internet', mode: 'down', duration: 60 },
+                        heavy: { target: 'internet', mode: 'down', duration: 120 } },
+
+    // Aegis — Infra
+    backup_fail:      { light: { duration: 60 }, medium: { duration: 120 }, heavy: { duration: 240 } },
+    ntp_drift:        { light: { drift_seconds: 6, duration: 60 },
+                        medium: { drift_seconds: 18, duration: 90 },
+                        heavy: { drift_seconds: 60, duration: 120 } },
+    hardware_warning: { light: { duration: 60 }, medium: { duration: 120 }, heavy: { duration: 240 } },
 };
 
 const ATTACK_PARAM_META = {
@@ -34,15 +72,28 @@ const ATTACK_PARAM_META = {
     memory_leak:      [{ name: 'leak_rate_mb_per_sec', label: 'Leak rate (MB/sec)', type: 'number' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
     cryptomining_sim: [{ name: 'cores', label: 'CPU cores', type: 'number' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
     ransomware_sim:   [{ name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    service_crash:    [{ name: 'service_id', label: 'Service ID (apache/mysql/redis/app)', type: 'text' }, { name: 'mode', label: 'Mode (crash/degrade/latency)', type: 'text' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    ssh_brute_force:  [{ name: 'pattern', label: 'Pattern (single_ip/distributed)', type: 'text' }, { name: 'attempts_per_second', label: 'Attempts/sec', type: 'number' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    cert_expire:      [{ name: 'domain', label: 'Domain', type: 'text' }, { name: 'target_days_remaining', label: 'Days remaining', type: 'number' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    port_expose:      [{ name: 'port', label: 'Port number', type: 'number' }, { name: 'process', label: 'Fake process name', type: 'text' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    dns_blackhole:    [{ name: 'mode', label: 'Mode (down/degraded)', type: 'text' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    gateway_drop:     [{ name: 'target', label: 'Target (internet/gateway)', type: 'text' }, { name: 'mode', label: 'Mode (down/degraded)', type: 'text' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    backup_fail:      [{ name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    ntp_drift:        [{ name: 'drift_seconds', label: 'Drift seconds', type: 'number' }, { name: 'duration', label: 'Duration (sec)', type: 'number' }],
+    hardware_warning: [{ name: 'duration', label: 'Duration (sec)', type: 'number' }],
 };
 
 const CATEGORY_META = {
-    performance:         { icon: 'activity',  label: 'Performance' },
-    resource_exhaustion: { icon: 'package',   label: 'Resource Exhaustion' },
-    io:                  { icon: 'hard-drive',label: 'I/O' },
-    ai_test:             { icon: 'brain',     label: 'AI Evasion Tests' },
-    advanced:            { icon: 'terminal',  label: 'Advanced' },
-    security_threat:     { icon: 'skull',     label: 'Security Threat Sims' },
+    performance:         { icon: 'activity',     label: 'Performance',           order: 1 },
+    service:             { icon: 'server',       label: 'Service Health',        order: 2 },
+    security:            { icon: 'shield',       label: 'Security',              order: 3 },
+    network:             { icon: 'globe',        label: 'Network',               order: 4 },
+    infra:               { icon: 'database',     label: 'Infrastructure',        order: 5 },
+    resource_exhaustion: { icon: 'package',      label: 'Resource Exhaustion',   order: 6 },
+    ai_test:             { icon: 'brain',        label: 'AI Evasion Tests',      order: 7 },
+    security_threat:     { icon: 'skull',        label: 'Malware Sims',          order: 8 },
+    io:                  { icon: 'hard-drive',   label: 'I/O',                   order: 9 },
+    advanced:            { icon: 'terminal',     label: 'Advanced',              order: 10 },
 };
 
 let allAttacks = [];
@@ -176,7 +227,10 @@ async function fetchHistory() {
 function renderCategories() {
     const grouped = {};
     allAttacks.forEach(a => { (grouped[a.category] ||= []).push(a); });
-    const order = ['performance', 'resource_exhaustion', 'io', 'ai_test', 'advanced', 'security_threat'];
+    // Sort by CATEGORY_META.order, fallback to alphabetical
+    const knownOrder = Object.keys(CATEGORY_META).sort((a, b) => (CATEGORY_META[a].order || 99) - (CATEGORY_META[b].order || 99));
+    const unknownCats = Object.keys(grouped).filter(c => !CATEGORY_META[c]);
+    const order = [...knownOrder, ...unknownCats];
     const container = document.getElementById('attackCategories');
     container.innerHTML = order.filter(c => grouped[c]).map(cat => {
         const attacks = grouped[cat];

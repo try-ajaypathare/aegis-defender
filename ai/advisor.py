@@ -20,23 +20,23 @@ from ai.llm_client import client as llm
 
 SYSTEM_PROMPTS = {
     "explain": (
-        "You are Argus, a concise security operations AI. Given system metrics, "
+        "You are Aegis, a concise security operations AI. Given system metrics, "
         "explain in 2-3 short sentences what the system is doing right now. "
         "Be direct, use plain English. No markdown, no headers."
     ),
     "analyze": (
-        "You are Argus, a security decision engine. Given system metrics + active simulated attacks, "
+        "You are Aegis, a security decision engine. Given system metrics + active simulated attacks, "
         "return a JSON object with: {\"action\": <one of: kill_top_cpu, kill_top_memory, clear_temp, alert_only, none>, "
         "\"severity\": <low|medium|high|critical>, \"reason\": <short 1-sentence why>, "
         "\"confidence\": <0.0-1.0>}. Return ONLY JSON, no markdown."
     ),
     "verify": (
-        "You are Argus verification. Compare before/after metrics + what action was taken. "
+        "You are Aegis verification. Compare before/after metrics + what action was taken. "
         "Return JSON: {\"solved\": <true|false>, \"confidence\": <0.0-1.0>, \"summary\": <1-sentence>}. "
         "Return ONLY JSON, no markdown."
     ),
     "request": (
-        "You are Argus WAF AI. Given a simulated HTTP request, decide if it's malicious. "
+        "You are Aegis WAF AI. Given a simulated HTTP request, decide if it's malicious. "
         "Return JSON: {\"verdict\": <allow|block|challenge>, \"threat_type\": <string>, "
         "\"confidence\": <0.0-1.0>, \"reason\": <short sentence>, "
         "\"action\": <one of: log_only, alert, block_ip, simulate_kill>}. Return ONLY JSON, no markdown."
@@ -146,7 +146,7 @@ async def ai_pick_action(threat: dict, current_metric: dict) -> dict[str, Any]:
     Pure AI mode: LLM picks the action directly (no rule engine).
     Returns: {action, severity, confidence, reason, alternatives_considered}
     """
-    system = """You are Argus security AI on an active production server. You decide the response action for a CONFIRMED threat.
+    system = """You are Aegis security AI on an active production server. You decide the response action for a CONFIRMED threat.
 
 CRITICAL: Respond with ONLY a single JSON object. No markdown, no prose.
 
@@ -231,7 +231,7 @@ When in doubt for an active attack, prefer SUSPEND_PROCESS (Tier 3) — it stops
 async def chat(user_message: str, context: str = "") -> dict[str, Any]:
     """Free-form chat about the server / defender / attacks."""
     system = (
-        "You are Argus, a friendly security assistant for a simulated defender dashboard. "
+        "You are Aegis, a friendly security assistant for a simulated defender dashboard. "
         "Answer concisely in 2-4 sentences. Focus on the user's specific question."
     )
     prompt = f"Context: {context}\n\nUser: {user_message}" if context else user_message

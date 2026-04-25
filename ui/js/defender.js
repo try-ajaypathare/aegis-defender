@@ -1248,11 +1248,113 @@ function updateAegisHealthSummary(items, kind) {
     }
 }
 
+async function fetchAuthFeed() {
+    try {
+        const r = await fetch(`${API_BASE}/api/security/auth_events?limit=30`);
+        const d = await r.json();
+        const events = d.events || [];
+        const stats = d.stats || {};
+
+        // Summary badge
+        const badge = document.getElementById('authFeedSummary');
+        if (badge) {
+            if (stats.failed_5m > 0) {
+                badge.textContent = `${stats.failed_5m} failures · ${stats.unique_ips} IPs · ${stats.blocked_ips} blocked`;
+                badge.className = stats.failed_5m > 30 ? 'badge danger' : 'badge warning';
+            } else {
+                badge.textContent = 'No activity';
+                badge.className = 'badge';
+            }
+        }
+
+        // List
+        const list = document.getElementById('authFeedList');
+        if (!list) return;
+        if (events.length === 0) return;
+
+        // Render newest-first
+        const rows = events.slice(-20).reverse().map(e => {
+            const cls = `auth-event ${e.result}`;
+            const flag = e.country || '--';
+            const resultLabel = e.result === 'success' ? 'OK'
+                              : e.result === 'fail_password' ? 'BAD PWD'
+                              : e.result === 'fail_user' ? 'NO USER'
+                              : 'FAIL';
+            return `<div class="${cls}">
+                <span class="ts">${escapeHtml(e.ts_human)}</span>
+                <span class="svc">${escapeHtml(e.service)}</span>
+                <span class="ip">${escapeHtml(e.source_ip)}</span>
+                <span class="country">${escapeHtml(flag)}</span>
+                <span class="user">${escapeHtml(e.username)}</span>
+                <span class="result">${resultLabel}</span>
+            </div>`;
+        });
+        list.innerHTML = rows.join('');
+    } catch (e) { /* silent */ }
+}
+
+async function showThreatsModal() {
+    try {
+        const r = await fetch(`${API_BASE}/api/security/auth_events?limit=1`);
+        const d = await r.json();
+        const threats = d.threats || [];
+        if (threats.length === 0) {
+            toast('No threats tracked yet', 'info');
+            return;
+        }
+        let html = `<table class="threats-tbl"><thead><tr>
+            <th>IP</th><th>Country</th><th>Score</th><th>Failures</th><th>Status</th><th></th>
+        </tr></thead><tbody>`;
+        threats.sort((a, b) => b.threat_score - a.threat_score).forEach(t => {
+            const blockBtn = t.blocked
+                ? `<button class="btn btn-sm" onclick="unblockIp('${t.ip}')">Unblock</button>`
+                : `<button class="btn btn-sm btn-danger" onclick="blockIp('${t.ip}')">Block</button>`;
+            html += `<tr>
+                <td><code>${escapeHtml(t.ip)}</code></td>
+                <td>${escapeHtml(t.country || '--')}</td>
+                <td><strong>${t.threat_score}</strong></td>
+                <td>${t.failures_recent}</td>
+                <td>${t.blocked ? '<span class="badge danger">BLOCKED</span>' : '<span class="badge">tracked</span>'}</td>
+                <td>${blockBtn}</td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        showInfoModal('IP Threat Tracker', html, 'lock');
+    } catch (e) { console.error(e); }
+}
+
+async function blockIp(ip) {
+    try {
+        await fetch(`${API_BASE}/api/security/block_ip`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip, duration_minutes: 15 }),
+        });
+        toast(`Blocked ${ip} for 15 minutes`, 'success');
+        showThreatsModal();
+        fetchAuthFeed();
+    } catch (e) { toast('Block failed', 'danger'); }
+}
+
+async function unblockIp(ip) {
+    try {
+        await fetch(`${API_BASE}/api/security/block_ip`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip, duration_minutes: 0 }),
+        });
+        toast(`Unblocked ${ip}`, 'success');
+        showThreatsModal();
+        fetchAuthFeed();
+    } catch (e) { toast('Unblock failed', 'danger'); }
+}
+
 function fetchAegisAll() {
     fetchAegisServices();
     fetchAegisNetwork();
     fetchAegisSecurity();
     fetchAegisInfra();
+    fetchAuthFeed();
 }
 
 // ============================================================
@@ -1292,6 +1394,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Decision panel buttons
     document.getElementById('showOffendersBtn')?.addEventListener('click', showOffenders);
     document.getElementById('showCatalogBtn')?.addEventListener('click', showActionCatalog);
+
+    // Aegis Auth feed buttons
+    document.getElementById('threatsModalBtn')?.addEventListener('click', showThreatsModal);
 
     // Investigation panel buttons
     document.getElementById('investigateBtn')?.addEventListener('click', () => runInvestigation());

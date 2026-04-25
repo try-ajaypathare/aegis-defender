@@ -1,5 +1,5 @@
 """
-Centralized logger for Argus.
+Centralized logger for Aegis.
 Writes to console (colored) and rotating log file.
 Handles Windows console encoding quirks (cp1252) by stripping non-encodable chars.
 """

@@ -22,7 +22,7 @@ UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Argus Attacker", version="1.0.0")
+    app = FastAPI(title="Aegis Attacker", version="1.0.0")
 
     if UI_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
         index = UI_DIR / "attacker.html"
         if index.exists():
             return FileResponse(index)
-        return {"name": "Argus Attacker"}
+        return {"name": "Aegis Attacker"}
 
     @app.get("/api/attacks/list", dependencies=[Depends(verify_token)])
     async def list_attacks():

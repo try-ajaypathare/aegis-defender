@@ -89,7 +89,7 @@ class Executor:
         if action == "alert_only":
             db.insert_action("alert", None, decision_dict.get("source", "rules"), True,
                              decision_dict.get("reason", ""))
-            notify("Argus Alert", decision_dict.get("reason", ""), level="warning")
+            notify("Aegis Alert", decision_dict.get("reason", ""), level="warning")
             return {"success": True}
         # Map old-style to new
         return {"success": False, "reason": "use execute_decision instead"}
@@ -106,7 +106,7 @@ class Executor:
 
     def _alert(self, d: Decision) -> dict:
         msg = f"[{d.threat.severity.upper()}] {d.threat.threat_type} from {d.threat.source_name}"
-        notify("Argus Alert", msg, level="warning")
+        notify("Aegis Alert", msg, level="warning")
         return {"success": True, "action": "alert", "message": msg}
 
     def _increase_monitoring(self, d: Decision) -> dict:

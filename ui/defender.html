@@ -222,6 +222,31 @@
             </div>
         </div>
 
+        <!-- AUTH EVENTS LIVE FEED — visualize SSH brute force in real time -->
+        <div class="panel" id="authFeedPanel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-lock"/></svg>
+                    Authentication Activity
+                </div>
+                <div class="panel-actions">
+                    <span class="badge" id="authFeedSummary">No activity</span>
+                    <button class="btn btn-sm" id="threatsModalBtn" title="Show all tracked IPs">
+                        <svg class="icon icon-sm"><use href="#i-list"/></svg>
+                        <span class="btn-text">IP Threats</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body tight">
+                <div id="authFeedList" class="auth-feed">
+                    <div class="empty">
+                        <svg class="icon empty-icon"><use href="#i-shield-check"/></svg>
+                        <div>No auth events yet. Run <code>ssh_brute_force</code> from the Attack Console.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- ATTACK TIMELINE — server's view of incoming attacks -->
         <div class="panel">
             <div class="panel-header">
