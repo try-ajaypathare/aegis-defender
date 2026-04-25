@@ -119,6 +119,10 @@ ai:
 services:
   enabled: true
   probe_interval_seconds: 5
+  # All services run in simulated_only mode by default — dashboard shows UP
+  # baseline regardless of whether XAMPP/Redis/the app server are actually
+  # running on the host. Attacks still flip status to DOWN via overlay; heal
+  # actions restore. Set simulated_only=false to enable real probes (advanced).
   monitored:
     - id: "apache"
       name: "Apache Web Server"
@@ -126,6 +130,7 @@ services:
       probe_url: "http://127.0.0.1:80/"
       port: 80
       timeout_seconds: 2
+      simulated_only: true
       restart_command: "C:\\xampp\\apache_start.bat"      # informational only
     - id: "mysql"
       name: "MySQL Database"
@@ -133,6 +138,7 @@ services:
       host: "127.0.0.1"
       port: 3306
       timeout_seconds: 2
+      simulated_only: true
       restart_command: "C:\\xampp\\mysql_start.bat"
     - id: "redis"
       name: "Redis Cache"
@@ -140,7 +146,7 @@ services:
       host: "127.0.0.1"
       port: 6379
       timeout_seconds: 2
-      simulated_only: true     # no XAMPP redis
+      simulated_only: true
     - id: "app"
       name: "Application Server"
       type: "http"

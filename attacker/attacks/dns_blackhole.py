@@ -41,6 +41,7 @@ class DNSBlackhole(BaseAttack):
             "level": "CRITICAL" if mode == "down" else "WARNING",
             "message": f"DNS resolution failing — link state {status}",
             "source": self.name,
+            "link": "dns",
         })
         log.info(f"[SIM] DNS link → {status} for {duration}s")
 

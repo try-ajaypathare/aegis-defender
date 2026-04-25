@@ -69,6 +69,22 @@ class SSHBruteForce(BaseAttack):
         interval = 1.0 / max(0.1, rate)
         while self.is_running and self._check_safety():
             ip, country = single if single else random.choice(MALICIOUS_IPS)
+
+            # Firewall realism: if defender has blocked this IP, packets never
+            # reach the auth log. Skip recording → auth_failures count tapers
+            # off as old events expire from the rolling window. This is what
+            # makes AUTO mode visibly "solve" the brute force.
+            threats = auth_state.all_threats()
+            blocked = any(t["ip"] == ip and t.get("blocked") for t in threats)
+            if blocked:
+                # In single_ip mode, attack is fully contained — exit early
+                if single:
+                    log.info(f"[SIM] Brute force IP {ip} blocked by defender — attack contained")
+                    break
+                # In distributed mode, just skip this round, try a different IP next
+                time.sleep(interval)
+                continue
+
             user = random.choice(USERNAMES)
             is_success = random.random() < success_rate
             if is_success:

@@ -300,6 +300,9 @@ const SOLUTION_LABELS = {
     retry_backup:     { verb: 'Retried',    what: 'failed backup' },
     sync_ntp:         { verb: 'Synchronized',what: 'NTP clock' },
     page_oncall:      { verb: 'Paged',      what: 'on-call engineer' },
+    restart_uplink:   { verb: 'Restarted',  what: 'network uplink' },
+    restart_dns:      { verb: 'Switched',   what: 'DNS resolver' },
+    clear_hw_warning: { verb: 'Acknowledged',what: 'hardware warning' },
     throttle_cpu:     { verb: 'Throttled',  what: 'CPU' },
     throttle_network: { verb: 'Throttled',  what: 'network' },
     rate_limit_source:{ verb: 'Rate-limited',what: 'source IP' },
@@ -1430,19 +1433,25 @@ async function fetchAegisSecurity() {
             fetch(`${API_BASE}/api/security/ports`).then(r => r.json()),
         ]);
 
-        const failed5m = authR.stats?.failed_5m || 0;
+        const activeFailed = authR.stats?.active_failed_5m ?? authR.stats?.failed_5m ?? 0;
+        const totalFailed = authR.stats?.failed_5m || 0;
         const blocked = authR.stats?.blocked_ips || 0;
         const certWarn = (certsR.certs || []).filter(c => c.days_to_expiry < 30 && !c.is_expired).length;
         const certCrit = (certsR.certs || []).filter(c => c.is_expired || c.days_to_expiry < 7).length;
         const portCrit = (portsR.ports || []).filter(p => p.severity === 'critical').length;
         const portWarn = (portsR.ports || []).filter(p => p.severity === 'warning').length;
 
-        const authClass = failed5m > 30 ? 'critical' : (failed5m > 10 ? 'warning' : 'ok');
+        // ACTIVE failures (excluding blocked IPs) drive the tile color
+        const authClass = activeFailed > 30 ? 'critical' : (activeFailed > 10 ? 'warning' : 'ok');
         const certClass = certCrit > 0 ? 'critical' : (certWarn > 0 ? 'warning' : 'ok');
         const portClass = portCrit > 0 ? 'critical' : (portWarn > 0 ? 'warning' : 'ok');
 
+        const authSub = (activeFailed === 0 && blocked > 0)
+            ? `${blocked} attackers blocked · contained`
+            : `${activeFailed} active · ${blocked} IPs blocked · ${totalFailed} total/5m`;
+
         const tiles = [
-            tile(authClass, 'Auth Failures', `${failed5m} in last 5m · ${blocked} IPs blocked`, null),
+            tile(authClass, 'Auth Failures', authSub, null),
             tile(certClass, 'SSL Certificates', `${(certsR.certs || []).length} monitored · ${certWarn} expiring soon`, null),
             tile(portClass, 'Open Ports', `${(portsR.ports || []).filter(p => p.open).length}/${(portsR.ports || []).length} open · ${portCrit} forbidden`, null),
         ];
@@ -1640,24 +1649,33 @@ async function updatePillars() {
         setText('pillarServicesSub', services.map(s => s.id).join(' · ') || '— monitored');
 
         // ─── SECURITY PILLAR ───
-        const failed5m = authR.stats?.failed_5m || 0;
+        // Use active_failed_5m (excludes blocked IPs) — shows whether the threat
+        // is currently mitigated. Once auto-block happens, this drops to ~0.
+        const activeFailed = authR.stats?.active_failed_5m ?? authR.stats?.failed_5m ?? 0;
+        const totalFailed = authR.stats?.failed_5m || 0;
         const blocked = authR.stats?.blocked_ips || 0;
         const certsExpiring = (certsR.certs || []).filter(c => c.days_to_expiry <= 30 && !c.is_expired).length;
         const certsCrit = (certsR.certs || []).filter(c => c.is_expired || c.days_to_expiry <= 7).length;
         const portsCrit = (portsR.ports || []).filter(p => p.severity === 'critical').length;
-        const totalIssues = (failed5m > 10 ? 1 : 0) + certsExpiring + portsCrit;
+        const totalIssues = (activeFailed > 10 ? 1 : 0) + certsExpiring + portsCrit;
         setText('pillarSecurityValue', totalIssues);
         const secCard = document.getElementById('pillarSecurity');
         if (secCard) {
             secCard.classList.remove('warning', 'critical');
-            if (portsCrit > 0 || failed5m > 30 || certsCrit > 0) {
+            if (portsCrit > 0 || activeFailed > 30 || certsCrit > 0) {
                 secCard.classList.add('critical');
-                setText('pillarSecurityMeta', portsCrit > 0 ? `${portsCrit} forbidden port open` : (failed5m > 30 ? `${failed5m} auth failures/5m` : `${certsCrit} certs expiring`));
+                setText('pillarSecurityMeta', portsCrit > 0
+                    ? `${portsCrit} forbidden port open`
+                    : (activeFailed > 30
+                        ? `${activeFailed} active threats`
+                        : `${certsCrit} certs expiring`));
             } else if (totalIssues > 0) {
                 secCard.classList.add('warning');
-                setText('pillarSecurityMeta', `${failed5m} fails · ${certsExpiring} certs · ${portsCrit} ports`);
+                setText('pillarSecurityMeta', `${activeFailed} active · ${certsExpiring} certs · ${portsCrit} ports`);
             } else {
-                setText('pillarSecurityMeta', `${blocked} blocked · all clean`);
+                setText('pillarSecurityMeta', blocked > 0
+                    ? `${blocked} attackers blocked · contained`
+                    : `all clean`);
             }
         }
 

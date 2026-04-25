@@ -72,6 +72,9 @@ class Executor:
             Action.RETRY_BACKUP: self._retry_backup,
             Action.SYNC_NTP: self._sync_ntp,
             Action.PAGE_ONCALL: self._page_oncall,
+            Action.RESTART_UPLINK: self._restart_uplink,
+            Action.RESTART_DNS: self._restart_dns,
+            Action.CLEAR_HW_WARNING: self._clear_hw_warning,
         }
         handler = handlers.get(action, self._noop)
 
@@ -370,6 +373,40 @@ class Executor:
         return {
             "success": True, "action": "page_oncall",
             "message": f"On-call paged: {msg}",
+        }
+
+    def _restart_uplink(self, d: Decision) -> dict:
+        """Restart internet/gateway uplink — clears the network_link overlay."""
+        from shared.state import network_state
+        link = d.threat.metadata.get("link") or d.threat.source_id
+        ok = network_state.clear_link_overlay(link)
+        return {
+            "success": ok, "action": "restart_uplink",
+            "message": f"Uplink '{link}' restarted — connectivity restored" if ok
+                       else f"Could not reset link '{link}'",
+            "link": link,
+        }
+
+    def _restart_dns(self, d: Decision) -> dict:
+        """Switch DNS provider / restart resolver — clears DNS link overlay."""
+        from shared.state import network_state
+        link = d.threat.metadata.get("link") or d.threat.source_id or "dns"
+        ok = network_state.clear_link_overlay(link)
+        return {
+            "success": ok, "action": "restart_dns",
+            "message": f"DNS resolver restarted (switched to fallback) — '{link}' resolving again" if ok
+                       else f"Could not reset DNS link '{link}'",
+            "link": link,
+        }
+
+    def _clear_hw_warning(self, d: Decision) -> dict:
+        """Acknowledge hardware warning — clears the warning + logs ticket."""
+        from shared.state import infra_state
+        infra_state.clear_hardware_warning()
+        msg = d.threat.metadata.get("event", {}).get("message", "hardware warning")
+        return {
+            "success": True, "action": "clear_hw_warning",
+            "message": f"Hardware warning acknowledged: '{msg[:60]}' — ticket logged for ops",
         }
 
     # =================================================================

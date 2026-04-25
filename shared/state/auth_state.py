@@ -151,14 +151,22 @@ class AuthState:
 
     def stats(self) -> dict:
         with self._lock:
-            failed_5m = sum(1 for e in self._events if time.time() - e.timestamp < 300 and e.result.startswith("fail"))
-            success_5m = sum(1 for e in self._events if time.time() - e.timestamp < 300 and e.result == RESULT_SUCCESS)
+            now = time.time()
+            blocked_set = {ip for ip, t in self._ip_threats.items() if t.is_blocked()}
+            failed_5m = sum(1 for e in self._events if now - e.timestamp < 300 and e.result.startswith("fail"))
+            # active = failures from non-blocked IPs (effectively, the live threat)
+            active_failed_5m = sum(1 for e in self._events
+                                    if now - e.timestamp < 300
+                                    and e.result.startswith("fail")
+                                    and e.source_ip not in blocked_set)
+            success_5m = sum(1 for e in self._events if now - e.timestamp < 300 and e.result == RESULT_SUCCESS)
             return {
                 "total_events": len(self._events),
                 "failed_5m": failed_5m,
+                "active_failed_5m": active_failed_5m,
                 "success_5m": success_5m,
                 "unique_ips": len(self._ip_threats),
-                "blocked_ips": sum(1 for t in self._ip_threats.values() if t.is_blocked()),
+                "blocked_ips": len(blocked_set),
             }
 
 

@@ -67,7 +67,12 @@ class Action(str, Enum):
     BLOCK_IP_AEGIS = "block_ip_aegis"        # block via auth_state (15min default)
     RETRY_BACKUP = "retry_backup"            # re-trigger failed backup
     SYNC_NTP = "sync_ntp"                    # re-sync clock
-    PAGE_ONCALL = "page_oncall"              # alert humans (network/hardware)
+    PAGE_ONCALL = "page_oncall"              # alert humans (last resort)
+    # Network healing
+    RESTART_UPLINK = "restart_uplink"        # reset internet/gateway link
+    RESTART_DNS = "restart_dns"              # switch DNS / restart resolver
+    # Hardware
+    CLEAR_HW_WARNING = "clear_hw_warning"    # acknowledge + log hardware warning
 
 
 ACTION_TIER = {
@@ -81,6 +86,7 @@ ACTION_TIER = {
     Action.RESTART_SERVICE: 2, Action.ROTATE_CERT: 1, Action.CLOSE_PORT: 2,
     Action.BLOCK_IP_AEGIS: 3, Action.RETRY_BACKUP: 0, Action.SYNC_NTP: 0,
     Action.PAGE_ONCALL: 0,
+    Action.RESTART_UPLINK: 2, Action.RESTART_DNS: 1, Action.CLEAR_HW_WARNING: 0,
 }
 
 
@@ -472,8 +478,14 @@ class DecisionEngine:
             return Action.CLOSE_PORT if sev in ("medium", "high", "critical") else Action.ALERT
 
         if st == "network_link":
-            # Network outage — page on-call, restart_uplink not implemented
-            return Action.PAGE_ONCALL if sev == "critical" else Action.ALERT
+            # Network outage — auto-heal: restart uplink for internet/gateway,
+            # switch DNS for resolver issues. Page on-call only as fallback.
+            link_name = threat.source_id.lower()
+            if "dns" in link_name:
+                return Action.RESTART_DNS
+            if link_name in ("internet", "gateway") or "uplink" in link_name:
+                return Action.RESTART_UPLINK
+            return Action.PAGE_ONCALL
 
         if st == "infra":
             # backup / NTP / hardware — read original event for accurate routing
@@ -484,7 +496,7 @@ class DecisionEngine:
             if "ntp" in msg or "drift" in msg or "clock" in msg:
                 return Action.SYNC_NTP
             if "hardware" in msg or "smart" in msg or "fan" in msg or "temp" in msg or "psu" in msg or "memory ecc" in msg:
-                return Action.PAGE_ONCALL
+                return Action.CLEAR_HW_WARNING
             return Action.ALERT
 
         return None  # falls through to legacy score-based ladder

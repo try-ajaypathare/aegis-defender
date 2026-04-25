@@ -47,6 +47,7 @@ class GatewayDrop(BaseAttack):
             "level": "CRITICAL" if mode == "down" else "WARNING",
             "message": f"Network link '{target}' → {status}",
             "source": self.name,
+            "link": target,
         })
         log.info(f"[SIM] Link {target} → {status} for {duration}s")
 
