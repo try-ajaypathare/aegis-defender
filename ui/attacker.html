@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis — Attack Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div id="icon-sprite-container" style="position:absolute; width:0; height:0; overflow:hidden;"></div>
+
+    <div class="container">
+        <!-- TOP NAV -->
+        <header class="topnav">
+            <div class="topnav-inner">
+                <div class="brand">
+                    <div class="brand-mark">A</div>
+                    <span>Aegis</span>
+                    <span class="brand-divider"></span>
+                    <span class="brand-host">Attack Console</span>
+                </div>
+                <div class="topnav-actions">
+                    <span class="badge danger">
+                        <span class="status-dot danger"></span>
+                        <span class="btn-text">Restricted Mode</span>
+                    </span>
+
+                    <div class="theme-toggle" role="group" aria-label="theme">
+                        <button data-theme-set="dark" class="active" title="Dark theme">
+                            <svg class="icon icon-sm"><use href="#i-moon"/></svg>
+                        </button>
+                        <button data-theme-set="light" title="Light theme">
+                            <svg class="icon icon-sm"><use href="#i-sun"/></svg>
+                        </button>
+                    </div>
+
+                    <a class="btn btn-icon" href="http://127.0.0.1:8000" target="_blank" title="Open Defender">
+                        <svg class="icon icon-sm"><use href="#i-shield"/></svg>
+                    </a>
+                    <button class="btn btn-danger" id="killSwitchBtn">
+                        <svg class="icon icon-sm"><use href="#i-stop-circle"/></svg>
+                        <span class="btn-text">Stop All</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- TARGET METRICS PREVIEW -->
+        <div class="metrics-grid">
+            <div class="metric-card" id="cpuCard">
+                <div class="metric-head">
+                    <span class="metric-label">Target CPU</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-cpu"/></svg></span>
+                </div>
+                <div class="metric-value"><span id="cpuValue">0.0</span><span class="metric-unit">%</span></div>
+                <div class="metric-sub" id="cpuSub">live from defender</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="cpuBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="memCard">
+                <div class="metric-head">
+                    <span class="metric-label">Target Memory</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-memory"/></svg></span>
+                </div>
+                <div class="metric-value"><span id="memValue">0.0</span><span class="metric-unit">%</span></div>
+                <div class="metric-sub" id="memSub">—</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="memBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="diskCard">
+                <div class="metric-head">
+                    <span class="metric-label">Target Disk</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-hard-drive"/></svg></span>
+                </div>
+                <div class="metric-value"><span id="diskValue">0.0</span><span class="metric-unit">%</span></div>
+                <div class="metric-sub" id="diskSub">—</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="diskBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-head">
+                    <span class="metric-label">Active Attacks</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-target"/></svg></span>
+                </div>
+                <div class="metric-value" id="attackCount">0</div>
+                <div class="metric-sub" id="attackCountSub">none active</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="attackBar" style="width:0%"></div></div>
+            </div>
+        </div>
+
+        <!-- ACTIVE ATTACKS -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-flame"/></svg>
+                    Active Attacks
+                </div>
+                <span class="badge" id="activeCount">0 running</span>
+            </div>
+            <div class="panel-body" id="activeAttacks">
+                <div class="empty">
+                    <svg class="icon empty-icon"><use href="#i-pause"/></svg>
+                    <div>No attacks running. Pick one below to start.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ATTACK CATEGORIES (rendered by JS) -->
+        <div id="attackCategories"></div>
+
+        <!-- HISTORY -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-clock"/></svg>
+                    Attack History
+                </div>
+                <button class="btn btn-sm" id="refreshHistoryBtn">
+                    <svg class="icon icon-sm"><use href="#i-refresh"/></svg>
+                    <span class="btn-text">Refresh</span>
+                </button>
+            </div>
+            <div class="panel-body tight">
+                <ul class="event-list" id="historyList">
+                    <li class="empty">
+                        <svg class="icon empty-icon"><use href="#i-clock"/></svg>
+                        <div>No attack history</div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <svg class="icon"><use href="#i-target"/></svg>
+                    <span id="modalTitle">Attack Parameters</span>
+                </div>
+                <button class="btn btn-ghost btn-icon" id="modalCloseX">
+                    <svg class="icon icon-sm"><use href="#i-x"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc" id="modalDesc"></p>
+                <div class="preset-row" id="presetRow">
+                    <button class="preset-btn" data-preset="light">Light</button>
+                    <button class="preset-btn active" data-preset="medium">Medium</button>
+                    <button class="preset-btn" data-preset="heavy">Heavy</button>
+                </div>
+                <div id="modalFields"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="modalCancel">Cancel</button>
+                <button class="btn btn-danger" id="modalStart">
+                    <svg class="icon icon-sm"><use href="#i-play"/></svg>
+                    <span>Start Attack</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="conn-indicator" id="connIndicator">
+        <span class="status-dot"></span>
+        <span id="connText">ready</span>
+    </div>
+
+    <script>
+        fetch('/static/icons.svg').then(r => r.text()).then(t => {
+            document.getElementById('icon-sprite-container').innerHTML = t;
+        });
+    </script>
+    <script src="/static/js/theme.js"></script>
+    <script src="/static/js/attacker.js"></script>
+</body>
+</html>

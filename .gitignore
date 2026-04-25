@@ -1,0 +1,44 @@
+# Secrets — NEVER commit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Database & logs
+storage/argus.db*
+storage/runtime_state.json
+logs/*.log*
+logs/*.log.*
+ai/saved/*.joblib
+ai/saved/*.pkl
+
+# Attack workspace
+attacker/attack_workspace/
+
+# Test artifacts
+test_output.log
+tests/_quick_*.py
+.coverage
+htmlcov/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Build
+build/
+dist/
+*.egg

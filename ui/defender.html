@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis — Defender</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Inline SVG icon sprite -->
+    <div id="icon-sprite-container" style="position:absolute; width:0; height:0; overflow:hidden;"></div>
+
+    <div class="container">
+        <!-- TOP NAV -->
+        <header class="topnav">
+            <div class="topnav-inner">
+                <div class="brand">
+                    <div class="brand-mark">A</div>
+                    <span>Aegis</span>
+                    <span class="brand-divider"></span>
+                    <span class="brand-host" id="brandHost">aegis-prime-01</span>
+                </div>
+                <div class="topnav-actions">
+                    <span class="badge success" id="liveStatus">
+                        <span class="status-dot"></span>
+                        <span>Live</span>
+                    </span>
+                    <span class="badge" id="baselineStatus">
+                        <svg class="icon"><use href="#i-trending-up"/></svg>
+                        <span>baseline learning…</span>
+                    </span>
+                    <span class="badge" id="aiStatus">
+                        <svg class="icon"><use href="#i-bot"/></svg>
+                        <span class="btn-text">AI offline</span>
+                    </span>
+                    <span class="badge" id="aiUsage" title="LLM call usage this session">
+                        <svg class="icon"><use href="#i-activity"/></svg>
+                        <span>0 calls</span>
+                    </span>
+
+                    <!-- Defense Mode 3-way toggle -->
+                    <div class="theme-toggle" role="group" aria-label="defense mode" id="defenseModeToggle" title="Defense mode">
+                        <button data-mode="auto"   title="Rules only — fast, deterministic, no LLM">AUTO</button>
+                        <button data-mode="hybrid" class="active" title="Rules + AI verify + investigation (default)">HYBRID</button>
+                        <button data-mode="ai"     title="LLM picks every action">AI</button>
+                    </div>
+
+                    <span class="badge" id="uptime" style="font-family: 'JetBrains Mono', monospace;">
+                        <svg class="icon"><use href="#i-clock"/></svg>
+                        <span>0m</span>
+                    </span>
+
+                    <div class="theme-toggle" role="group" aria-label="theme">
+                        <button data-theme-set="dark" class="active" title="Dark theme">
+                            <svg class="icon icon-sm"><use href="#i-moon"/></svg>
+                        </button>
+                        <button data-theme-set="light" title="Light theme">
+                            <svg class="icon icon-sm"><use href="#i-sun"/></svg>
+                        </button>
+                    </div>
+
+                    <button class="btn" id="retrainBtn" title="Retrain anomaly model">
+                        <svg class="icon icon-sm"><use href="#i-refresh"/></svg>
+                        <span class="btn-text">Retrain</span>
+                    </button>
+                    <button class="btn" id="demoResetBtn" title="Clear demo state (events, sims, baseline)">
+                        <svg class="icon icon-sm"><use href="#i-trash"/></svg>
+                        <span class="btn-text">Reset Demo</span>
+                    </button>
+                    <a class="btn btn-icon" href="http://127.0.0.1:8001" target="_blank" title="Open Attacker">
+                        <svg class="icon icon-sm"><use href="#i-target"/></svg>
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- METRIC CARDS -->
+        <div class="metrics-grid">
+            <div class="metric-card" id="cpuCard">
+                <div class="metric-head">
+                    <span class="metric-label">CPU</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-cpu"/></svg></span>
+                </div>
+                <div class="metric-value"><span id="cpuValue">0.0</span><span class="metric-unit">%</span></div>
+                <div class="metric-sub" id="cpuSub">—</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="cpuBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="memCard">
+                <div class="metric-head">
+                    <span class="metric-label">Memory</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-memory"/></svg></span>
+                </div>
+                <div class="metric-value"><span id="memValue">0.0</span><span class="metric-unit">%</span></div>
+                <div class="metric-sub" id="memSub">—</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="memBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="diskCard">
+                <div class="metric-head">
+                    <span class="metric-label">Disk</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-hard-drive"/></svg></span>
+                </div>
+                <div class="metric-value"><span id="diskValue">0.0</span><span class="metric-unit">%</span></div>
+                <div class="metric-sub" id="diskSub">—</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="diskBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-head">
+                    <span class="metric-label">Processes</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-server"/></svg></span>
+                </div>
+                <div class="metric-value" id="procValue">0</div>
+                <div class="metric-sub" id="procSub">—</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="procBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-head">
+                    <span class="metric-label">Network</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-network"/></svg></span>
+                </div>
+                <div class="metric-value" id="netValue">0</div>
+                <div class="metric-sub" id="netSub">—</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="netBar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="aiCard">
+                <div class="metric-head">
+                    <span class="metric-label">Anomaly</span>
+                    <span class="metric-icon"><svg class="icon"><use href="#i-brain"/></svg></span>
+                </div>
+                <div class="metric-value" id="aiScoreValue">0.00</div>
+                <div class="metric-sub" id="aiSub">not trained</div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="aiBar" style="width:0%"></div></div>
+            </div>
+        </div>
+
+        <!-- AI LIVE SOLVE — demo-grade step-by-step problem solving -->
+        <div class="panel" id="aiSolvePanel" style="border: 1px solid var(--accent); box-shadow: 0 0 0 1px var(--accent-bg);">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-zap"/></svg>
+                    AI Live Solve
+                </div>
+                <div class="panel-actions">
+                    <span class="badge accent" id="solveStatus">ready</span>
+                    <button class="btn btn-primary btn-sm" id="solveNowBtn">
+                        <svg class="icon icon-sm"><use href="#i-play"/></svg>
+                        <span class="btn-text">Solve with AI</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body" id="solvePanelBody">
+                <div class="empty">
+                    <svg class="icon empty-icon"><use href="#i-zap"/></svg>
+                    <div>Click <strong>Solve with AI</strong>, or run an attack while AI mode is on. Watch the AI work step-by-step.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AEGIS INFRASTRUCTURE HEALTH — services, security, network, infra -->
+        <div class="panel" id="aegisHealthPanel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-server"/></svg>
+                    Infrastructure Health
+                </div>
+                <div class="panel-actions">
+                    <span class="badge" id="aegisHealthSummary">all systems healthy</span>
+                </div>
+            </div>
+            <div class="panel-body">
+                <!-- SERVICES -->
+                <div class="aegis-row">
+                    <div class="aegis-row-label">
+                        <svg class="icon icon-sm"><use href="#i-package"/></svg>
+                        Services
+                    </div>
+                    <div class="aegis-tile-grid" id="serviceTiles">
+                        <div class="aegis-tile placeholder">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- NETWORK -->
+                <div class="aegis-row">
+                    <div class="aegis-row-label">
+                        <svg class="icon icon-sm"><use href="#i-globe"/></svg>
+                        Network
+                    </div>
+                    <div class="aegis-tile-grid" id="networkTiles">
+                        <div class="aegis-tile placeholder">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- SECURITY -->
+                <div class="aegis-row">
+                    <div class="aegis-row-label">
+                        <svg class="icon icon-sm"><use href="#i-shield"/></svg>
+                        Security
+                    </div>
+                    <div class="aegis-tile-grid" id="securityTiles">
+                        <div class="aegis-tile placeholder">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- INFRASTRUCTURE -->
+                <div class="aegis-row">
+                    <div class="aegis-row-label">
+                        <svg class="icon icon-sm"><use href="#i-database"/></svg>
+                        Infrastructure
+                    </div>
+                    <div class="aegis-tile-grid" id="infraTiles">
+                        <div class="aegis-tile placeholder">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ATTACK TIMELINE — server's view of incoming attacks -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-radio"/></svg>
+                    Attack Detection Timeline
+                </div>
+                <span class="badge" id="timelineCount">0 attacks observed</span>
+            </div>
+            <div class="panel-body tight">
+                <div id="attackTimeline">
+                    <div class="empty">
+                        <svg class="icon empty-icon"><use href="#i-shield-check"/></svg>
+                        <div>No attacks observed. Server clean.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI INVESTIGATION — multi-step agent loop -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-fingerprint"/></svg>
+                    AI Investigation
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-sm btn-primary" id="investigateBtn">
+                        <svg class="icon icon-sm"><use href="#i-search"/></svg>
+                        <span class="btn-text">Run Investigation</span>
+                    </button>
+                    <button class="btn btn-sm" id="showInvestigationsBtn">
+                        <svg class="icon icon-sm"><use href="#i-clock"/></svg>
+                        <span class="btn-text">History</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body" id="investigationPanel">
+                <div class="empty">
+                    <svg class="icon empty-icon"><use href="#i-fingerprint"/></svg>
+                    <div>No active investigation. Run one to see AI reason step-by-step.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DECISION ENGINE -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-sliders"/></svg>
+                    Decision Engine
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-sm" id="showCatalogBtn">
+                        <svg class="icon icon-sm"><use href="#i-book"/></svg>
+                        <span class="btn-text">Action Catalog</span>
+                    </button>
+                    <button class="btn btn-sm" id="showOffendersBtn">
+                        <svg class="icon icon-sm"><use href="#i-fingerprint"/></svg>
+                        <span class="btn-text">Offenders</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div id="decisionPanel">
+                    <div class="empty">
+                        <svg class="icon empty-icon"><use href="#i-sliders"/></svg>
+                        <div>Trigger an attack or send a request — graduated decisions appear here</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI ASSISTANT -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-bot"/></svg>
+                    AI Assistant
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-sm" id="aiExplainBtn">
+                        <svg class="icon icon-sm"><use href="#i-eye"/></svg>
+                        <span class="btn-text">Explain</span>
+                    </button>
+                    <button class="btn btn-sm" id="aiAnalyzeBtn">
+                        <svg class="icon icon-sm"><use href="#i-target"/></svg>
+                        <span class="btn-text">Analyze</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div id="aiAssistantOutput">
+                    <div class="ai-output">
+                        <span style="color: var(--text-muted);">Click Explain or Analyze, or ask a question below…</span>
+                    </div>
+                </div>
+                <div class="ai-input-row">
+                    <input class="ai-input" id="aiChatInput" placeholder="Ask AI about this server…" />
+                    <button class="btn btn-primary" id="aiChatBtn">
+                        <svg class="icon icon-sm"><use href="#i-send"/></svg>
+                        <span class="btn-text">Send</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- WAF / REQUEST FEED -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-radio"/></svg>
+                    Live Request Feed
+                </div>
+                <div class="panel-actions">
+                    <select id="wafPatternSelect" class="btn btn-sm" style="padding: 5px 8px; cursor: pointer;"></select>
+                    <button class="btn btn-sm" id="wafSendOneBtn">
+                        <svg class="icon icon-sm"><use href="#i-send"/></svg>
+                        <span class="btn-text">Send</span>
+                    </button>
+                    <button class="btn btn-sm" id="wafSendBurstBtn">
+                        <svg class="icon icon-sm"><use href="#i-zap"/></svg>
+                        <span class="btn-text">Burst (5)</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body tight">
+                <ul class="event-list" id="wafList">
+                    <li class="empty">
+                        <svg class="icon empty-icon"><use href="#i-radio"/></svg>
+                        <div>Send a request — AI classifies it in real time</div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- DETECTION STATS -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-trending-up"/></svg>
+                    Detection Statistics (24h)
+                </div>
+                <button class="btn btn-sm" id="refreshStatsBtn">
+                    <svg class="icon icon-sm"><use href="#i-refresh"/></svg>
+                    <span class="btn-text">Refresh</span>
+                </button>
+            </div>
+            <div class="panel-body">
+                <div class="stat-grid">
+                    <div class="stat-card"><div class="stat-value" id="statEvents">0</div><div class="stat-label">Events</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statActions">0</div><div class="stat-label">Actions</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statAttacks">0</div><div class="stat-label">Attacks Detected</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statSuspicious">0</div><div class="stat-label">Suspicious</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statAvgCpu">0</div><div class="stat-label">Avg CPU 1h</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statPeakCpu">0</div><div class="stat-label">Peak CPU 1h</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SYSTEM INFO -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-server"/></svg>
+                    System Information
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="info-grid" id="sysInfoGrid">
+                    <div class="info-item"><div class="info-item-label">Loading…</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LIVE METRICS CHART -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-activity"/></svg>
+                    Live Metrics
+                </div>
+                <div class="panel-actions">
+                    <button class="btn btn-sm" data-range="0.5">30m</button>
+                    <button class="btn btn-sm" data-range="1">1h</button>
+                    <button class="btn btn-sm" data-range="6">6h</button>
+                    <button class="btn btn-sm" data-range="24">24h</button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="chart-container"><canvas id="metricsChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- TWO COLUMN: top procs + connections -->
+        <div class="two-col">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg class="icon"><use href="#i-list"/></svg>
+                        Top Processes
+                    </div>
+                    <span class="badge" id="topProcCount">—</span>
+                </div>
+                <div class="panel-body tight">
+                    <table class="data-table" id="topProcTable">
+                        <thead><tr>
+                            <th>Process</th><th>PID</th><th class="num">CPU</th><th class="num">MEM</th><th>User</th>
+                        </tr></thead>
+                        <tbody><tr><td colspan="5"><div class="empty">Loading…</div></td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg class="icon"><use href="#i-network"/></svg>
+                        Connections
+                    </div>
+                    <span class="badge" id="connCount">—</span>
+                </div>
+                <div class="panel-body tight">
+                    <table class="data-table" id="connTable">
+                        <thead><tr>
+                            <th>Process</th><th>Remote</th><th>Status</th>
+                        </tr></thead>
+                        <tbody><tr><td colspan="3"><div class="empty">Loading…</div></td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TWO COLUMN: events + AI explanation -->
+        <div class="two-col">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg class="icon"><use href="#i-activity"/></svg>
+                        Recent Events
+                    </div>
+                    <button class="btn btn-sm" id="clearEventsBtn">
+                        <svg class="icon icon-sm"><use href="#i-refresh"/></svg>
+                    </button>
+                </div>
+                <div class="panel-body tight">
+                    <ul class="event-list" id="eventList">
+                        <li class="empty">
+                            <svg class="icon empty-icon"><use href="#i-clock"/></svg>
+                            <div>Waiting for events</div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg class="icon"><use href="#i-brain"/></svg>
+                        AI Decision Explanation
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div id="aiExplanation">
+                        <div class="empty">
+                            <svg class="icon empty-icon"><use href="#i-shield-check"/></svg>
+                            <div>System normal</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECURITY -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-shield"/></svg>
+                    Security Watchers
+                </div>
+                <span class="badge accent">5 active</span>
+            </div>
+            <div class="panel-body tight">
+                <ul class="event-list" id="securityList">
+                    <li class="empty">
+                        <svg class="icon empty-icon"><use href="#i-shield-check"/></svg>
+                        <div>No security alerts</div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- ACTIONS -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-zap"/></svg>
+                    Recent Actions
+                </div>
+            </div>
+            <div class="panel-body tight">
+                <ul class="event-list" id="actionList">
+                    <li class="empty">
+                        <svg class="icon empty-icon"><use href="#i-zap"/></svg>
+                        <div>No actions taken yet</div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection indicator -->
+    <div class="conn-indicator" id="connIndicator">
+        <span class="status-dot idle"></span>
+        <span id="connText">connecting…</span>
+    </div>
+
+    <script>
+        // Inject icon sprite at load
+        fetch('/static/icons.svg').then(r => r.text()).then(t => {
+            document.getElementById('icon-sprite-container').innerHTML = t;
+        });
+    </script>
+    <script src="/static/js/theme.js"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/defender.js"></script>
+</body>
+</html>

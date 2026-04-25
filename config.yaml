@@ -1,0 +1,280 @@
+# ==========================================
+# AEGIS CONFIGURATION
+# Self-Healing Infrastructure Defender
+# ==========================================
+
+app:
+  name: "Aegis"
+  version: "1.0.0"
+  environment: "development"   # development | production
+  log_level: "INFO"            # DEBUG | INFO | WARNING | ERROR
+
+# ------------------------------------------
+# Monitoring — tuned for fast simulation feedback
+# ------------------------------------------
+monitoring:
+  interval_seconds: 2          # fast tick in simulation mode
+  retention_days: 30
+  warmup_samples: 2
+
+# ------------------------------------------
+# Performance Thresholds (rules engine)
+# ------------------------------------------
+thresholds:
+  cpu:
+    warning: 70
+    critical: 85
+    sustained_seconds: 3
+  memory:
+    warning: 78
+    critical: 90
+    sustained_seconds: 3
+  disk:
+    warning: 85
+    critical: 95
+    sustained_seconds: 3
+  processes:
+    warning: 320
+    critical: 420
+  network:
+    connection_warning: 150
+    connection_critical: 300
+  # Service-level thresholds (NEW)
+  service_latency_ms:
+    warning: 500
+    critical: 1500
+  auth_failures_per_minute:
+    warning: 10
+    critical: 30
+  cert_days_to_expiry:
+    warning: 30
+    critical: 7
+
+# ------------------------------------------
+# Actions
+# ------------------------------------------
+actions:
+  auto_kill_enabled: true
+  auto_clear_temp: true
+  kill_confirmation_required: false
+  cooldown_seconds: 3
+  ai_advisor_enabled: true
+  ai_verify_after_action: true
+
+# Never touch these processes
+safety_list:
+  - System
+  - System Idle Process
+  - Registry
+  - smss.exe
+  - csrss.exe
+  - wininit.exe
+  - services.exe
+  - lsass.exe
+  - svchost.exe
+  - explorer.exe
+  - dwm.exe
+  - python.exe
+  - pythonw.exe
+  - MsMpEng.exe
+  - NisSrv.exe
+  - SecurityHealthService.exe
+  - conhost.exe
+  - fontdrvhost.exe
+  - spoolsv.exe
+  - winlogon.exe
+  - claude.exe
+  - Code.exe
+  - cursor.exe
+  - WindowsTerminal.exe
+  - cmd.exe
+  - powershell.exe
+  - bash.exe
+  - git-bash.exe
+  - node.exe
+  - chrome.exe
+  - msedge.exe
+  - firefox.exe
+  - brave.exe
+  - httpd.exe          # Apache
+  - mysqld.exe         # MySQL
+  - xampp-control.exe
+
+# ------------------------------------------
+# AI Settings
+# ------------------------------------------
+ai:
+  enabled: true
+  engine: "isolation_forest"
+  auto_retrain_hours: 72
+  min_samples_for_training: 1000
+  anomaly_threshold: 0.7
+  contamination: 0.05
+  use_shap_explanations: true
+
+# ------------------------------------------
+# Service Health (NEW — Phase 1)
+# Hybrid: real probes when available, simulation otherwise
+# ------------------------------------------
+services:
+  enabled: true
+  probe_interval_seconds: 5
+  monitored:
+    - id: "apache"
+      name: "Apache Web Server"
+      type: "http"
+      probe_url: "http://127.0.0.1:80/"
+      port: 80
+      timeout_seconds: 2
+      restart_command: "C:\\xampp\\apache_start.bat"      # informational only
+    - id: "mysql"
+      name: "MySQL Database"
+      type: "tcp"
+      host: "127.0.0.1"
+      port: 3306
+      timeout_seconds: 2
+      restart_command: "C:\\xampp\\mysql_start.bat"
+    - id: "redis"
+      name: "Redis Cache"
+      type: "tcp"
+      host: "127.0.0.1"
+      port: 6379
+      timeout_seconds: 2
+      simulated_only: true     # no XAMPP redis
+    - id: "app"
+      name: "Application Server"
+      type: "http"
+      probe_url: "http://127.0.0.1:3000/"
+      port: 3000
+      timeout_seconds: 2
+      simulated_only: true
+
+# ------------------------------------------
+# Security Audit (NEW — Phase 2)
+# ------------------------------------------
+security_audit:
+  enabled: true
+  audit_interval_seconds: 5
+  ssh_brute_force:
+    track_window_minutes: 5
+    block_threshold_failures: 5
+    block_duration_minutes: 15
+  cert_check:
+    monitored_domains:
+      - "api.example.com"
+      - "app.example.com"
+      - "admin.example.com"
+      - "cdn.example.com"
+  port_audit:
+    expected_open_ports: [80, 443, 22, 3306]
+    forbidden_ports: [23, 135, 445, 4444, 5555, 6667]
+
+# ------------------------------------------
+# Network Health (NEW — Phase 3)
+# ------------------------------------------
+network_health:
+  enabled: true
+  probe_interval_seconds: 10
+  gateway_ip: "192.168.1.1"
+  internet_targets:
+    - "8.8.8.8"
+    - "1.1.1.1"
+  dns_test_domains:
+    - "google.com"
+    - "cloudflare.com"
+
+# ------------------------------------------
+# Infrastructure Health (NEW — Phase 4)
+# ------------------------------------------
+infra_health:
+  enabled: true
+  audit_interval_seconds: 30
+  backup:
+    expected_interval_hours: 24
+  ntp:
+    max_drift_seconds: 5
+  os_updates:
+    warn_pending_count: 5
+
+# ------------------------------------------
+# Legacy Security Watchers (existing)
+# ------------------------------------------
+security:
+  process_genealogy: true
+  network_watcher: true
+  file_integrity: true
+  registry_watcher: true
+  usb_monitor: true
+
+  watched_folders:
+    - "C:\\Windows\\System32\\drivers"
+    - "C:\\Windows\\System32\\config"
+
+  suspicious_ports:
+    - 3333
+    - 4444
+    - 8333
+    - 14444
+    - 5555
+
+  suspicious_chains:
+    - ["explorer.exe", "cmd.exe", "powershell.exe"]
+    - ["winword.exe", "cmd.exe"]
+    - ["excel.exe", "powershell.exe"]
+
+# ------------------------------------------
+# Dashboards
+# ------------------------------------------
+dashboards:
+  defender_port: 8000
+  attacker_port: 8001
+  host: "127.0.0.1"
+  auth_enabled: false
+  auth_token: "change-me-in-production"
+
+# ------------------------------------------
+# Attack safety limits
+# ------------------------------------------
+attacks:
+  max_duration_seconds: 300
+  max_ram_mb: 2000
+  max_disk_mb: 1000
+  max_cpu_cores: 4
+  max_threads: 500
+  max_sockets: 500
+  max_file_handles: 500
+  max_processes_fork_bomb: 30
+  kill_switch_hotkey: "ctrl+shift+q"
+  workspace_folder: "attacker/attack_workspace"
+
+# ------------------------------------------
+# Notifications
+# ------------------------------------------
+notifications:
+  windows_toast: true
+  console_output: true
+  log_file: "logs/aegis.log"
+
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+
+  discord:
+    enabled: false
+    webhook_url: ""
+
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    username: ""
+    password: ""
+    recipients: []
+
+# ------------------------------------------
+# Feedback loop
+# ------------------------------------------
+feedback:
+  enabled: true
+  min_feedback_for_retrain: 20
