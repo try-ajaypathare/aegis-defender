@@ -127,6 +127,168 @@ function renderEvent(ev) {
 let aegisSolutionsToday = 0;
 let solutionsBannerTimeout = null;
 
+// ============================================================
+// LIVE DECISION FLOW — DETECT → ANALYZE → DECIDE → EXECUTE → VERIFY
+// Each incident gets a card with step-by-step status as events flow in.
+// ============================================================
+let _currentIncidents = [];      // most recent first; max 4 kept
+const MAX_INCIDENTS = 4;
+
+function _flowIncidentKey(d) {
+    // Match on source_type + source_id (or source_name)
+    return `${d.source_type || 'x'}:${d.source_id || d.source_name || ''}:${d.threat_type || ''}`;
+}
+
+function _findOrCreateIncident(d) {
+    const key = _flowIncidentKey(d);
+    let inc = _currentIncidents.find(i => i.key === key);
+    if (inc) return inc;
+    inc = {
+        key,
+        startTs: Date.now(),
+        category: d.source_type || '',
+        target: d.source_name || d.source_id || '?',
+        threatType: d.threat_type || '',
+        severity: d.severity || '',
+        decision: null,
+        execute: null,
+        verify: null,
+        state: 'active',  // active | healed | failed
+    };
+    _currentIncidents.unshift(inc);
+    while (_currentIncidents.length > MAX_INCIDENTS) _currentIncidents.pop();
+    return inc;
+}
+
+function _renderFlowPanel() {
+    const body = document.getElementById('flowBody');
+    if (!body) return;
+    if (_currentIncidents.length === 0) {
+        body.innerHTML = `<div class="empty">${ic('shield-check', 'icon empty-icon')}<div>No active incident. Trigger an attack from the console.</div></div>`;
+        document.getElementById('flowStatus').textContent = 'idle';
+        return;
+    }
+    body.innerHTML = _currentIncidents.map(inc => _renderIncident(inc)).join('');
+    document.getElementById('flowStatus').textContent = _currentIncidents.length === 1 ? '1 incident' : `${_currentIncidents.length} incidents`;
+}
+
+function _step(label, state, content) {
+    const stateMap = { 'pending': '·', 'running': '⟳', 'done': '✓', 'failed': '✗' };
+    return `
+        <div class="flow-step ${state}">
+            <div class="flow-step-icon">${stateMap[state] || '·'}</div>
+            <div class="flow-step-label">${escapeHtml(label)}</div>
+            <div class="flow-step-content">${content}</div>
+        </div>`;
+}
+
+function _renderIncident(inc) {
+    const elapsed = Math.round((Date.now() - inc.startTs) / 1000);
+
+    // STEP 1: DETECT (always done if incident exists)
+    const detect = `
+        Incident detected on <code>${escapeHtml(inc.target)}</code> (${escapeHtml(inc.category)})
+        <div class="flow-kvs">
+            <span class="flow-kv">type=<strong>${escapeHtml(inc.threatType)}</strong></span>
+            <span class="flow-kv">severity=<strong>${escapeHtml(inc.severity || '?')}</strong></span>
+        </div>`;
+
+    // STEP 2: ANALYZE (done if decision exists)
+    const analyzeState = inc.decision ? 'done' : 'running';
+    const analyze = inc.decision ? `
+        Threat scored against <strong>rule + reputation + context</strong> factors
+        <div class="flow-kvs">
+            <span class="flow-kv">risk_score=<strong>${inc.decision.risk_score?.toFixed(0) || '?'}/100</strong></span>
+            <span class="flow-kv">confidence=<strong>${inc.decision.confidence?.toFixed(2) || '?'}</strong></span>
+            <span class="flow-kv">tier=<strong>${inc.decision.tier ?? '?'}</strong></span>
+        </div>` : `Computing risk score and matching rules…`;
+
+    // STEP 3: DECIDE
+    const decideState = inc.decision ? 'done' : 'pending';
+    const decide = inc.decision ? `
+        <span style="color: var(--accent); font-weight: 600;">→ ${escapeHtml(inc.decision.action)}</span>
+        <div class="flow-kvs">
+            ${(inc.decision.reasoning || []).slice(0, 3).map(r =>
+                `<span class="flow-kv">${escapeHtml(r)}</span>`
+            ).join('')}
+        </div>
+        ${(inc.decision.rejected_alternatives && inc.decision.rejected_alternatives.length) ?
+            `<div class="flow-rejected">Rejected: ${inc.decision.rejected_alternatives.slice(0, 2).map(alt =>
+                `<span class="strike">${escapeHtml(alt.action)}</span>(${escapeHtml(alt.reason)})`
+            ).join(' · ')}</div>` : ''}
+        ` : `Awaiting decision…`;
+
+    // STEP 4: EXECUTE
+    const execState = inc.execute ? (inc.execute.success === false ? 'failed' : 'done')
+                                   : (inc.decision ? 'running' : 'pending');
+    const exec = inc.execute ? `
+        ${escapeHtml(inc.execute.message || inc.execute.action || 'executed')}` :
+        `Executing action…`;
+
+    // STEP 5: VERIFY (HYBRID/AI only)
+    const verifyState = inc.verify ? (inc.verify.outcome === 'healed' ? 'done' : 'failed') : 'pending';
+    const verify = inc.verify ? `
+        ${inc.verify.outcome === 'healed' ? '✓ State healed:' : '⚠ Not yet healed:'}
+        <code>${escapeHtml(inc.verify.detail || '')}</code>` :
+        `Pending verification…`;
+
+    return `
+        <div class="flow-incident ${inc.state}">
+            <div class="flow-incident-header">
+                <span style="color: var(--text);">${escapeHtml(inc.target)}</span>
+                <span class="badge">${escapeHtml(inc.category)}</span>
+                <span class="meta">T+${elapsed}s</span>
+            </div>
+            ${_step('DETECT',   'done', detect)}
+            ${_step('ANALYZE',  analyzeState, analyze)}
+            ${_step('DECIDE',   decideState, decide)}
+            ${_step('EXECUTE',  execState, exec)}
+            ${_step('VERIFY',   verifyState, verify)}
+        </div>`;
+}
+
+function flowOnDecision(d) {
+    const inc = _findOrCreateIncident(d);
+    inc.decision = d;
+    _renderFlowPanel();
+}
+
+function flowOnAction(a) {
+    if (!_currentIncidents.length) return;
+    const inc = _currentIncidents[0];   // attribute to most recent incident
+    inc.execute = a;
+    if (a.success === false) inc.state = 'failed';
+    _renderFlowPanel();
+}
+
+function flowOnVerify(v) {
+    if (!_currentIncidents.length) return;
+    const inc = _currentIncidents[0];
+    inc.verify = v;
+    inc.state = (v.outcome === 'healed') ? 'healed' : 'failed';
+    _renderFlowPanel();
+}
+
+function flowSetMode(mode) {
+    const el = document.getElementById('flowMode');
+    if (el) el.textContent = `mode: ${mode}`;
+}
+
+// Tick: update T+Xs counters + auto-prune old healed incidents
+function flowTick() {
+    if (!_currentIncidents.length) return;
+    const now = Date.now();
+    // Drop incidents healed > 60s ago
+    const before = _currentIncidents.length;
+    _currentIncidents = _currentIncidents.filter(inc => {
+        if (inc.state === 'healed' && (now - inc.startTs) > 60000) return false;
+        return true;
+    });
+    if (before !== _currentIncidents.length || _currentIncidents.length > 0) {
+        _renderFlowPanel();
+    }
+}
+
 // Map action_type → human-friendly description for the banner
 const SOLUTION_LABELS = {
     restart_service:  { verb: 'Restarted',  what: 'service' },
@@ -178,22 +340,41 @@ function showSolutionsBanner(actionType, details, target) {
     }, 6000);
 }
 
-function renderAction(a) {
+// De-dup tracking: only pop banner once per unique action (id or timestamp+type).
+// fetchActions() polling re-renders the whole list every 5s — without this guard
+// the banner would flash continuously.
+const _seenActionKeys = new Set();
+function _actionKey(a) {
+    if (a.id !== undefined && a.id !== null) return `id:${a.id}`;
+    return `${a.timestamp || ''}:${a.action_type || a.action || ''}:${a.target_id || a.target || ''}`;
+}
+
+function renderAction(a, opts = {}) {
     const list = document.getElementById('actionList');
     const ts = a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
     const actionType = (a.action_type || a.action || 'ACTION').toLowerCase();
     const details = a.details || a.message || a.target || a.reason || 'executed';
 
-    // ---- Show prominent solutions banner for non-trivial actions ----
-    const trivial = ['none', 'log_only', 'noop'];
-    const success = a.success !== false;  // undefined or true counts
-    if (success && !trivial.includes(actionType)) {
+    // ---- Pop the Solutions banner ONLY for new live actions (not every poll) ----
+    const key = _actionKey(a);
+    const isLive = opts.isLive === true;            // WS push → live
+    const alreadySeen = _seenActionKeys.has(key);
+    _seenActionKeys.add(key);
+    // Cap the set size to avoid unbounded memory growth
+    if (_seenActionKeys.size > 500) {
+        const first = _seenActionKeys.values().next().value;
+        _seenActionKeys.delete(first);
+    }
+
+    const trivial = ['none', 'log_only', 'noop', 'alert'];
+    const success = a.success !== false;
+    const shouldPop = isLive && success && !alreadySeen && !trivial.includes(actionType);
+    if (shouldPop) {
         showSolutionsBanner(actionType, details, a.target || a.target_id);
-        // Toast as well
         toast(`Aegis: ${(SOLUTION_LABELS[actionType]?.verb || actionType)} ${SOLUTION_LABELS[actionType]?.what || ''}`.trim(), 'success');
     }
 
-    // ---- Append to Recent Actions list ----
+    // ---- Append to Recent Actions list (always — shows historical too) ----
     if (!list) return;
     clearEmpty(list);
     const li = document.createElement('li');
@@ -646,6 +827,7 @@ function applyModeUI(mode) {
     document.querySelectorAll('#defenseModeToggle button').forEach(b => {
         b.classList.toggle('active', b.dataset.mode === mode);
     });
+    flowSetMode(mode);
 }
 
 async function setDefenseMode(mode) {
@@ -1084,7 +1266,10 @@ function connectWS() {
                 updateMetricCards(msg.data);
                 if (typeof pushToChart === 'function') pushToChart(msg.data);
             } else if (msg.type === 'action') {
-                renderAction(msg.data.result || msg.data);
+                // WebSocket push → mark as LIVE so banner pops once
+                const actionData = msg.data.result || msg.data;
+                renderAction(actionData, { isLive: true });
+                flowOnAction(actionData);  // feed Decision Flow EXECUTE step
             } else if (['security', 'suspicious_process', 'network_alert', 'usb'].includes(msg.type)) {
                 renderSecurityEvent(msg.data);
             } else if (msg.type === 'fake_request') {
@@ -1093,6 +1278,7 @@ function connectWS() {
             } else if (msg.type === 'defender_decision' || msg.type === 'decision') {
                 renderDecision(msg.data);
                 recordDecisionForAttack(msg.data);
+                flowOnDecision(msg.data);  // feed Decision Flow ANALYZE+DECIDE
             } else if (msg.type === 'attack_started') {
                 recordAttackStart(msg.data);
             } else if (msg.type === 'attack_stopped') {
@@ -1105,10 +1291,14 @@ function connectWS() {
                 renderInvestigationFinal(msg.data);
             } else if (msg.type === 'defense_mode') {
                 applyModeUI(msg.data.mode);
+                flowSetMode(msg.data.mode);
             } else if (msg.type === 'ai_solve') {
                 handleSolveEvent(msg.data);
             } else if (msg.type === 'ai_advice' || msg.type === 'ai_verify') {
-                if (msg.type === 'ai_verify') recordVerifyForAttack(msg.data);
+                if (msg.type === 'ai_verify') {
+                    recordVerifyForAttack(msg.data);
+                    flowOnVerify(msg.data);   // feed Decision Flow VERIFY step
+                }
             }
         } catch (e) { console.warn('WS parse:', e); }
     };
@@ -1560,6 +1750,8 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchAegisAll();
 
     setInterval(updateUptime, 1000);
+    setInterval(flowTick, 1000);
+    fetchDefenseMode();
     setInterval(fetchLlmStatus, 60000);
     setInterval(fetchEvents, 5000);
     setInterval(fetchActions, 5000);

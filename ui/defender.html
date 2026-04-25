@@ -176,6 +176,26 @@
             <span id="aiScoreValue">0</span><span id="aiSub"></span><div id="aiBar"></div><div id="aiCard"></div>
         </div>
 
+        <!-- LIVE DECISION FLOW — instant step-by-step trace of every incident -->
+        <div class="panel decision-flow-panel" id="decisionFlowPanel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg class="icon"><use href="#i-activity"/></svg>
+                    Live Decision Flow
+                </div>
+                <div class="panel-actions">
+                    <span class="badge accent" id="flowMode">mode: —</span>
+                    <span class="badge" id="flowStatus">idle</span>
+                </div>
+            </div>
+            <div class="panel-body" id="flowBody">
+                <div class="empty">
+                    <svg class="icon empty-icon"><use href="#i-shield-check"/></svg>
+                    <div>No active incident. Trigger an attack from the console.</div>
+                </div>
+            </div>
+        </div>
+
         <!-- AI LIVE SOLVE — demo-grade step-by-step problem solving -->
         <div class="panel" id="aiSolvePanel" style="border: 1px solid var(--accent); box-shadow: 0 0 0 1px var(--accent-bg);">
             <div class="panel-header">
