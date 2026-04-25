@@ -60,6 +60,15 @@ class Action(str, Enum):
     ROLLBACK_CHANGES = "rollback_changes"   # ransomware
     NOTIFY_SOC = "notify_soc"
 
+    # Tier 6: Aegis remediation (heal infrastructure)
+    RESTART_SERVICE = "restart_service"      # Apache/MySQL/Redis/App
+    ROTATE_CERT = "rotate_cert"              # SSL certificate renewal
+    CLOSE_PORT = "close_port"                # forbidden port
+    BLOCK_IP_AEGIS = "block_ip_aegis"        # block via auth_state (15min default)
+    RETRY_BACKUP = "retry_backup"            # re-trigger failed backup
+    SYNC_NTP = "sync_ntp"                    # re-sync clock
+    PAGE_ONCALL = "page_oncall"              # alert humans (network/hardware)
+
 
 ACTION_TIER = {
     Action.NONE: 0, Action.LOG_ONLY: 0, Action.ALERT: 0, Action.INCREASE_MONITORING: 0,
@@ -68,6 +77,10 @@ ACTION_TIER = {
     Action.SUSPEND_PROCESS: 3, Action.BLOCK_IP_TEMPORARY: 3,
     Action.KILL_PROCESS: 4, Action.KILL_AND_CAPTURE: 4, Action.BLOCK_IP_PERMANENT: 4,
     Action.CLEAR_TEMP: 0, Action.ROLLBACK_CHANGES: 4, Action.NOTIFY_SOC: 0,
+    # Aegis tier 6 — remediation actions (mark as low-disruption tier 1 conceptually)
+    Action.RESTART_SERVICE: 2, Action.ROTATE_CERT: 1, Action.CLOSE_PORT: 2,
+    Action.BLOCK_IP_AEGIS: 3, Action.RETRY_BACKUP: 0, Action.SYNC_NTP: 0,
+    Action.PAGE_ONCALL: 0,
 }
 
 
@@ -373,6 +386,17 @@ class DecisionEngine:
             rejected.append((Action.SUSPEND_PROCESS, "source is trusted"))
             return Action.LOG_ONLY, rejected, ["Source trusted — log for audit only"], "no impact"
 
+        # --- Aegis category-specific direct mappings ---
+        # For service/security/network/infra incidents, the "graduated response"
+        # score-based ladder doesn't quite apply — we know the right remediation.
+        aegis_action = self._aegis_action_for(threat)
+        if aegis_action is not None:
+            rejected.append((Action.KILL_PROCESS, "infrastructure event — heal, don't kill"))
+            return aegis_action, rejected, [
+                f"Aegis category={threat.source_type} → direct remediation action",
+                f"Chose {aegis_action.value} to heal the affected resource",
+            ], f"resource healed via {aegis_action.value}"
+
         # --- Score-based tier selection ---
         # Tier 0: Observe (0-30)
         if score < 30:
@@ -420,6 +444,50 @@ class DecisionEngine:
             f"Risk {score:.0f} → critical, immediate termination",
             f"{action.value} chosen — capture forensics on the way out",
         ], "threat eliminated"
+
+    # -------- Aegis category → direct remediation action --------
+
+    def _aegis_action_for(self, threat: ThreatContext) -> Action | None:
+        """
+        Direct mapping from Aegis category event to remediation action.
+        Returns None for categories that should fall through to score-based ladder
+        (process / metric / request — those are CPU/RAM/WAF style threats).
+        """
+        st = threat.source_type
+        sev = threat.severity
+
+        if st == "service":
+            return Action.RESTART_SERVICE if sev in ("medium", "high", "critical") else Action.ALERT
+
+        if st == "ip":
+            # SSH brute force / suspicious IP
+            return Action.BLOCK_IP_AEGIS if sev in ("medium", "high", "critical") else Action.ALERT
+
+        if st == "cert":
+            # SSL cert expiring / expired
+            return Action.ROTATE_CERT if sev in ("medium", "high", "critical") else Action.ALERT
+
+        if st == "port":
+            # Forbidden open port
+            return Action.CLOSE_PORT if sev in ("medium", "high", "critical") else Action.ALERT
+
+        if st == "network_link":
+            # Network outage — page on-call, restart_uplink not implemented
+            return Action.PAGE_ONCALL if sev == "critical" else Action.ALERT
+
+        if st == "infra":
+            # backup / NTP / hardware — read original event for accurate routing
+            ev = threat.metadata.get("event", {})
+            msg = (ev.get("message", "") + " " + ev.get("source", "")).lower()
+            if "backup" in msg:
+                return Action.RETRY_BACKUP
+            if "ntp" in msg or "drift" in msg or "clock" in msg:
+                return Action.SYNC_NTP
+            if "hardware" in msg or "smart" in msg or "fan" in msg or "temp" in msg or "psu" in msg or "memory ecc" in msg:
+                return Action.PAGE_ONCALL
+            return Action.ALERT
+
+        return None  # falls through to legacy score-based ladder
 
     # -------- Per-tier action picking based on threat type --------
 
@@ -544,6 +612,106 @@ def threat_from_attack(attack: dict, severity: str = "high", confidence: float =
         is_trusted=trust.is_trusted_process(name),
         metadata={"attack_id": attack.get("id"), "category": attack.get("category")},
     )
+
+
+def threat_from_aegis_event(event: dict) -> ThreatContext | None:
+    """
+    Build a ThreatContext from an Aegis category event published by checks/attacks.
+
+    Event shape (from bus.publish("event", ...)):
+        category: "service" | "security" | "network" | "infra"
+        level:    "INFO" | "WARNING" | "CRITICAL"
+        message:  human-readable
+        source:   producer name
+        plus category-specific fields (service_id, ip, port, domain, link, etc.)
+
+    Returns None for INFO-level events (no decision needed).
+    """
+    category = event.get("category", "")
+    level = event.get("level", "INFO").upper()
+    if level == "INFO":
+        return None
+
+    severity_map = {"WARNING": "medium", "CRITICAL": "critical"}
+    severity = severity_map.get(level, "low")
+    is_business = 8 <= datetime.now().hour <= 19
+
+    # Map category -> source_type / source_id / threat_type
+    if category == "service":
+        sid = event.get("service_id", "unknown")
+        return ThreatContext(
+            source_type="service",
+            source_id=sid,
+            source_name=event.get("message", f"service:{sid}"),
+            threat_type=event.get("source", "service_incident"),
+            severity=severity,
+            confidence=0.9,
+            is_business_hours=is_business,
+            metadata={"service_id": sid, "event": event},
+        )
+
+    if category == "security":
+        # Could be brute force, cert expiry, port exposure
+        if "ip" in event:
+            return ThreatContext(
+                source_type="ip",
+                source_id=event["ip"],
+                source_name=f"ip:{event['ip']}",
+                threat_type=event.get("source", "auth_attack"),
+                severity=severity,
+                confidence=0.85,
+                is_business_hours=is_business,
+                metadata={"ip": event["ip"], "event": event},
+            )
+        if "domain" in event:
+            return ThreatContext(
+                source_type="cert",
+                source_id=event["domain"],
+                source_name=f"cert:{event['domain']}",
+                threat_type="cert_expiring",
+                severity=severity,
+                confidence=0.95,
+                is_business_hours=is_business,
+                metadata={"domain": event["domain"], "event": event},
+            )
+        if "port" in event:
+            return ThreatContext(
+                source_type="port",
+                source_id=str(event["port"]),
+                source_name=f"port:{event['port']}",
+                threat_type="port_exposure",
+                severity=severity,
+                confidence=0.92,
+                is_business_hours=is_business,
+                metadata={"port": event["port"], "event": event},
+            )
+
+    if category == "network":
+        link = event.get("link", "unknown")
+        return ThreatContext(
+            source_type="network_link",
+            source_id=link,
+            source_name=f"link:{link}",
+            threat_type=event.get("source", "network_outage"),
+            severity=severity,
+            confidence=0.95,
+            is_business_hours=is_business,
+            metadata={"link": link, "event": event},
+        )
+
+    if category == "infra":
+        return ThreatContext(
+            source_type="infra",
+            source_id=event.get("source", "unknown"),
+            source_name=event.get("message", "")[:60],
+            threat_type=event.get("source", "infra_incident"),
+            severity=severity,
+            confidence=0.85,
+            is_business_hours=is_business,
+            metadata={"event": event},
+        )
+
+    return None
 
 
 def threat_from_request(request: dict, ai_verdict: dict | None = None) -> ThreatContext:

@@ -64,6 +64,14 @@ class Executor:
             Action.CLEAR_TEMP: self._clear_temp,
             Action.ROLLBACK_CHANGES: self._rollback_changes,
             Action.NOTIFY_SOC: self._notify_soc,
+            # Aegis Tier 6 — infrastructure remediation
+            Action.RESTART_SERVICE: self._restart_service,
+            Action.ROTATE_CERT: self._rotate_cert,
+            Action.CLOSE_PORT: self._close_port,
+            Action.BLOCK_IP_AEGIS: self._block_ip_aegis,
+            Action.RETRY_BACKUP: self._retry_backup,
+            Action.SYNC_NTP: self._sync_ntp,
+            Action.PAGE_ONCALL: self._page_oncall,
         }
         handler = handlers.get(action, self._noop)
 
@@ -273,6 +281,95 @@ class Executor:
         return {
             "success": True, "action": "notify_soc",
             "message": f"SOC team notified with full incident report",
+        }
+
+    # =================================================================
+    # Tier 6: Aegis remediation (infrastructure healing)
+    # =================================================================
+
+    def _restart_service(self, d: Decision) -> dict:
+        """Clear service overlay — heal a crashed/degraded service."""
+        from shared.state import service_state
+        sid = d.threat.metadata.get("service_id") or d.threat.source_id
+        ok = service_state.clear_overlay(sid)
+        if not ok:
+            return {"success": False, "action": "restart_service",
+                    "message": f"Unknown service '{sid}'"}
+        rec = service_state.get(sid)
+        return {
+            "success": True, "action": "restart_service",
+            "message": f"Service {rec.name if rec else sid} restarted (restart #{rec.restart_count})",
+            "service_id": sid,
+            "new_status": rec.effective_status() if rec else "unknown",
+        }
+
+    def _rotate_cert(self, d: Decision) -> dict:
+        """Issue new SSL cert for the affected domain."""
+        from shared.state import cert_state
+        domain = d.threat.metadata.get("domain") or d.threat.source_id
+        ok = cert_state.rotate(domain)
+        if not ok:
+            return {"success": False, "action": "rotate_cert",
+                    "message": f"Unknown cert domain '{domain}'"}
+        cert = cert_state.get(domain)
+        return {
+            "success": True, "action": "rotate_cert",
+            "message": f"SSL cert rotated for {domain} — now valid for {round(cert.days_to_expiry(), 0)} days",
+            "domain": domain,
+            "new_days_to_expiry": cert.days_to_expiry() if cert else 0,
+        }
+
+    def _close_port(self, d: Decision) -> dict:
+        """Close a forbidden open port."""
+        from shared.state import network_state
+        port = int(d.threat.metadata.get("port") or d.threat.source_id or 0)
+        if port == 0:
+            return {"success": False, "action": "close_port", "message": "No port specified"}
+        ok = network_state.close_port_action(port)
+        return {
+            "success": ok, "action": "close_port",
+            "message": f"Port {port} closed at firewall" if ok else f"Could not close port {port}",
+            "port": port,
+        }
+
+    def _block_ip_aegis(self, d: Decision) -> dict:
+        """Block attacking IP via Aegis auth_state (15min by default)."""
+        from shared.state import auth_state
+        ip = d.threat.metadata.get("ip") or d.threat.source_id
+        duration_min = int(d.threat.metadata.get("duration_minutes", 15))
+        ok = auth_state.block_ip(ip, duration_s=duration_min * 60, reason=d.threat.threat_type or "ai_decision")
+        return {
+            "success": ok, "action": "block_ip_aegis",
+            "message": f"IP {ip} blocked for {duration_min}m (reason: {d.threat.threat_type})",
+            "ip": ip,
+            "duration_minutes": duration_min,
+        }
+
+    def _retry_backup(self, d: Decision) -> dict:
+        """Re-trigger a failed backup."""
+        from shared.state import infra_state
+        ok = infra_state.retry_backup_action()
+        return {
+            "success": ok, "action": "retry_backup",
+            "message": "Backup re-triggered and completed successfully" if ok else "Retry failed",
+        }
+
+    def _sync_ntp(self, d: Decision) -> dict:
+        """Re-sync NTP clock."""
+        from shared.state import infra_state
+        ok = infra_state.sync_ntp_action()
+        return {
+            "success": ok, "action": "sync_ntp",
+            "message": "NTP synchronized — drift cleared" if ok else "Sync failed",
+        }
+
+    def _page_oncall(self, d: Decision) -> dict:
+        """Alert on-call engineer (simulated — would dispatch to PagerDuty/Opsgenie)."""
+        msg = f"PAGE: {d.threat.threat_type} — {d.threat.source_name or d.threat.source_id}"
+        notify("Aegis On-Call Page", msg, level="error")
+        return {
+            "success": True, "action": "page_oncall",
+            "message": f"On-call paged: {msg}",
         }
 
     # =================================================================

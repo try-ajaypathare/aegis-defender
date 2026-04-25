@@ -22,6 +22,7 @@ from defender.decision_engine import (
     Action,
     engine as decision_engine,
     offenders,
+    threat_from_aegis_event,
     threat_from_attack,
     threat_from_metric,
 )
@@ -61,6 +62,133 @@ class DefenderOrchestrator:
 
     def register_with_bus(self) -> None:
         bus.subscribe(Topics.METRIC_COLLECTED, self.handle_metric)
+        # Aegis: also subscribe to category events emitted by checks/attacks
+        bus.subscribe("event", self.handle_aegis_event)
+        # Throttle map: source_id -> last_action_ts. Prevents action spam from
+        # repeated events about the same incident.
+        self._aegis_action_throttle: dict[str, float] = {}
+        self._aegis_throttle_seconds = 8
+
+    def handle_aegis_event(self, event: dict[str, Any]) -> None:
+        """
+        Process category events (service/security/network/infra) from checks/attacks.
+        Branches by defense mode (AUTO/HYBRID/AI), runs decision flow, executes action.
+        """
+        try:
+            category = event.get("category", "")
+            if category not in ("service", "security", "network", "infra"):
+                return  # not for us — legacy categories ignored
+
+            level = event.get("level", "INFO").upper()
+            if level == "INFO":
+                return  # only react to WARNING/CRITICAL
+
+            threat = threat_from_aegis_event(event)
+            if threat is None:
+                return
+
+            # De-duplicate: same source within throttle window → skip
+            throttle_key = f"{threat.source_type}:{threat.source_id}:{threat.threat_type}"
+            now = time.time()
+            last = self._aegis_action_throttle.get(throttle_key, 0)
+            if now - last < self._aegis_throttle_seconds:
+                return
+            self._aegis_action_throttle[throttle_key] = now
+
+            current_mode = mode_state.mode
+
+            # AI mode: pure LLM decision via live solver (when not throttled)
+            if current_mode == DefenseMode.AI:
+                if not self._solver_in_progress and (now - self._last_solve_at > self._solver_cooldown):
+                    self._kick_off_live_solver(
+                        f"AI mode: detected {category} incident — {event.get('message', '')[:80]}"
+                    )
+                else:
+                    # Cooldown: fall through to engine-based action so something happens
+                    pass
+
+            # AUTO + HYBRID + (AI-cooldown): use DecisionEngine
+            decision = decision_engine.decide(threat)
+
+            db.insert_event(
+                level="ACTION" if decision.action.value not in ("none", "log_only") else "INFO",
+                category=threat.source_type,
+                message=(
+                    f"[{current_mode.value.upper()}] {category} incident "
+                    f"→ {decision.action.value} (target: {threat.source_name})"
+                ),
+                source=f"orchestrator:{current_mode.value}",
+                metadata=decision.to_dict(),
+            )
+            bus.publish("defender.decision", decision.to_dict())
+
+            # HYBRID extras: AI verify after action (similar to metric flow)
+            if current_mode == DefenseMode.HYBRID:
+                self._maybe_auto_investigate(decision, threat)
+
+            # Execute (AUTO + HYBRID always; AI as fallback when solver cooling down)
+            if self.cfg.actions.auto_kill_enabled and decision.action.value not in ("none",):
+                result = self.executor.execute_decision(decision)
+                # AI verify in HYBRID mode for non-trivial actions
+                if (current_mode == DefenseMode.HYBRID
+                        and self.cfg.actions.ai_verify_after_action
+                        and decision.action.value not in ("none", "log_only", "alert")):
+                    self._schedule_aegis_verification(threat, decision, result)
+
+        except Exception as e:  # noqa: BLE001
+            log.error(f"Aegis event handler error: {e}", exc_info=True)
+
+    def _schedule_aegis_verification(self, threat, decision, action_result) -> None:
+        """Lightweight verify: did the state actually heal after the action?"""
+        if not self._loop:
+            return
+
+        async def _verify() -> None:
+            await asyncio.sleep(2)
+            try:
+                # Quick state check based on category
+                from shared.state import service_state, auth_state, cert_state, network_state, infra_state
+                healed = False
+                detail = ""
+                if threat.source_type == "service":
+                    rec = service_state.get(threat.metadata.get("service_id", threat.source_id))
+                    healed = rec is not None and rec.effective_status() == "up"
+                    detail = f"service status = {rec.effective_status() if rec else 'unknown'}"
+                elif threat.source_type == "ip":
+                    threats = auth_state.all_threats()
+                    target = next((t for t in threats if t["ip"] == threat.source_id), None)
+                    healed = target is not None and target.get("blocked", False)
+                    detail = f"ip blocked = {bool(target and target.get('blocked'))}"
+                elif threat.source_type == "cert":
+                    cert = cert_state.get(threat.metadata.get("domain", threat.source_id))
+                    healed = cert is not None and cert.days_to_expiry() > 60
+                    detail = f"cert days = {cert.days_to_expiry() if cert else 'unknown'}"
+                elif threat.source_type == "port":
+                    ports = network_state.all_ports()
+                    target = next((p for p in ports if p["port"] == int(threat.source_id)), None)
+                    healed = target is not None and not target["open"]
+                    detail = f"port closed = {bool(target and not target['open'])}"
+                else:
+                    healed = True
+                    detail = "verified"
+                bus.publish("ai.verify", {
+                    "decision": decision.to_dict(),
+                    "outcome": "healed" if healed else "not_healed",
+                    "detail": detail,
+                })
+                db.insert_event(
+                    level="INFO" if healed else "WARN",
+                    category="ai_verify",
+                    message=f"Verify after {decision.action.value}: {detail}",
+                    source="aegis_verify",
+                )
+            except Exception as e:  # noqa: BLE001
+                log.debug(f"Aegis verify error: {e}")
+
+        try:
+            asyncio.run_coroutine_threadsafe(_verify(), self._loop)
+        except Exception as e:  # noqa: BLE001
+            log.debug(f"Aegis verify schedule failed: {e}")
 
     def handle_metric(self, metric: dict[str, Any]) -> None:
         try:

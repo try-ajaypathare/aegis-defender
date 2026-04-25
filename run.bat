@@ -1,18 +1,24 @@
 @echo off
-REM Argus quick launcher for Windows
+REM Aegis quick launcher for Windows
 cd /d "%~dp0"
 
-if not exist "venv\" (
-    echo Creating virtual environment...
-    python -m venv venv
+echo ============================================
+echo  Aegis - Self-Healing Infrastructure Defender
+echo ============================================
+echo.
+
+REM Optional venv. Skip silently if not present (system Python works fine).
+if exist "venv\Scripts\activate.bat" (
+    call venv\Scripts\activate.bat
 )
 
-call venv\Scripts\activate.bat
+echo Starting Aegis on:
+echo   Defender Dashboard : http://127.0.0.1:8000
+echo   Attack Console     : http://127.0.0.1:8001
+echo.
+echo Press Ctrl+C to stop.
+echo.
 
-echo Installing dependencies...
-pip install -q -r requirements.txt
-
-echo Starting Argus...
 python main.py
 
 pause
