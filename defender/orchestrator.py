@@ -69,10 +69,23 @@ class DefenderOrchestrator:
         self._aegis_action_throttle: dict[str, float] = {}
         self._aegis_throttle_seconds = 8
 
+    # Detection delay per mode — gives the user time to SEE the problem
+    # before Aegis "reacts" (otherwise heal is sub-millisecond and invisible).
+    REACTION_DELAY = {
+        DefenseMode.AUTO:   3.0,   # rule-based: fast but visible
+        DefenseMode.HYBRID: 4.5,   # rules + AI verify
+        DefenseMode.AI:     3.0,   # AI live solver runs separately
+    }
+
     def handle_aegis_event(self, event: dict[str, Any]) -> None:
         """
         Process category events (service/security/network/infra) from checks/attacks.
         Branches by defense mode (AUTO/HYBRID/AI), runs decision flow, executes action.
+
+        Action execution is intentionally delayed by REACTION_DELAY so the user
+        can SEE the RED state on the dashboard before Aegis heals it. Decision
+        is computed + published immediately so the Live Decision Flow panel
+        shows DETECT/ANALYZE/DECIDE steps animating in real time.
         """
         try:
             category = event.get("category", "")
@@ -103,9 +116,6 @@ class DefenderOrchestrator:
                     self._kick_off_live_solver(
                         f"AI mode: detected {category} incident — {event.get('message', '')[:80]}"
                     )
-                else:
-                    # Cooldown: fall through to engine-based action so something happens
-                    pass
 
             # AUTO + HYBRID + (AI-cooldown): use DecisionEngine
             decision = decision_engine.decide(threat)
@@ -120,23 +130,52 @@ class DefenderOrchestrator:
                 source=f"orchestrator:{current_mode.value}",
                 metadata=decision.to_dict(),
             )
+
+            # PUBLISH decision IMMEDIATELY so the UI Live Decision Flow shows
+            # DETECT/ANALYZE/DECIDE steps right away (visible).
             bus.publish("defender.decision", decision.to_dict())
 
             # HYBRID extras: AI verify after action (similar to metric flow)
             if current_mode == DefenseMode.HYBRID:
                 self._maybe_auto_investigate(decision, threat)
 
-            # Execute (AUTO + HYBRID always; AI as fallback when solver cooling down)
+            # DELAY the actual execution — schedule via asyncio so we don't
+            # block the bus thread. This is the visible-reaction window.
             if self.cfg.actions.auto_kill_enabled and decision.action.value not in ("none",):
-                result = self.executor.execute_decision(decision)
-                # AI verify in HYBRID mode for non-trivial actions
-                if (current_mode == DefenseMode.HYBRID
-                        and self.cfg.actions.ai_verify_after_action
-                        and decision.action.value not in ("none", "log_only", "alert")):
-                    self._schedule_aegis_verification(threat, decision, result)
+                delay = self.REACTION_DELAY.get(current_mode, 3.0)
+                self._schedule_delayed_execution(threat, decision, current_mode, delay)
 
         except Exception as e:  # noqa: BLE001
             log.error(f"Aegis event handler error: {e}", exc_info=True)
+
+    def _schedule_delayed_execution(self, threat, decision, mode, delay: float) -> None:
+        """Run executor after `delay` seconds. Visible reaction window for demo."""
+        if not self._loop:
+            # No event loop yet — execute immediately as fallback
+            try:
+                result = self.executor.execute_decision(decision)
+                if mode == DefenseMode.HYBRID and decision.action.value not in ("none", "log_only", "alert"):
+                    self._schedule_aegis_verification(threat, decision, result)
+            except Exception as e:  # noqa: BLE001
+                log.error(f"Inline executor failed: {e}")
+            return
+
+        async def _delayed_exec() -> None:
+            await asyncio.sleep(delay)
+            try:
+                result = self.executor.execute_decision(decision)
+                # AI verify in HYBRID mode for non-trivial actions
+                if (mode == DefenseMode.HYBRID
+                        and self.cfg.actions.ai_verify_after_action
+                        and decision.action.value not in ("none", "log_only", "alert")):
+                    self._schedule_aegis_verification(threat, decision, result)
+            except Exception as e:  # noqa: BLE001
+                log.error(f"Delayed executor error: {e}")
+
+        try:
+            asyncio.run_coroutine_threadsafe(_delayed_exec(), self._loop)
+        except Exception as e:  # noqa: BLE001
+            log.error(f"Could not schedule delayed exec: {e}")
 
     def _schedule_aegis_verification(self, threat, decision, action_result) -> None:
         """Lightweight verify: did the state actually heal after the action?"""
