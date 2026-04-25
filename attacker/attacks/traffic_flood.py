@@ -8,7 +8,7 @@ from attacker.base_attack import BaseAttack
 
 class TrafficFlood(BaseAttack):
     name = "traffic_flood"
-    category = "performance"
+    category = "network"
     description = "[SIM] Simulated HTTP flood — Network card spikes, no real requests"
 
     def _run(self) -> None:

@@ -1495,3 +1495,100 @@ body { background-image: var(--bg-pattern); background-attachment: fixed; }
     border-radius: 3px 3px 2px 50%;
     opacity: 0.5;
 }
+
+/* ──────────────────────────────────────────────
+   AEGIS — Live Solutions Banner
+   Flashes when an action heals an incident — prominently shows that
+   the system is actually SOLVING, not just detecting.
+   ────────────────────────────────────────────── */
+.solutions-banner {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    gap: 16px;
+    align-items: center;
+    background: linear-gradient(135deg, var(--success-bg) 0%, var(--accent-bg) 100%);
+    border: 1px solid var(--success);
+    border-radius: 12px;
+    padding: 14px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 0 24px rgba(16, 185, 129, 0.18);
+    animation: solutions-flash 0.6s ease-out;
+}
+
+@keyframes solutions-flash {
+    0%   { transform: scale(0.95); opacity: 0; box-shadow: 0 0 0 0 var(--success); }
+    50%  { transform: scale(1.02); opacity: 1; box-shadow: 0 0 0 12px rgba(16, 185, 129, 0.18); }
+    100% { transform: scale(1); opacity: 1; box-shadow: 0 0 24px rgba(16, 185, 129, 0.18); }
+}
+
+.solutions-banner.fading {
+    animation: solutions-fade 0.5s ease-in forwards;
+}
+@keyframes solutions-fade {
+    from { opacity: 1; }
+    to   { opacity: 0; transform: scale(0.98); }
+}
+
+.solutions-icon {
+    width: 56px; height: 56px;
+    background: var(--success);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: white;
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.45);
+}
+.solutions-icon .icon { width: 28px; height: 28px; }
+
+.solutions-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--success);
+    margin-bottom: 4px;
+}
+.solutions-message {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+}
+.solutions-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.solutions-stats {
+    display: flex; gap: 14px;
+}
+.solutions-stat {
+    text-align: center;
+    padding: 0 12px;
+    border-left: 1px solid rgba(16, 185, 129, 0.35);
+}
+.solutions-stat-num {
+    font-size: 24px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--success);
+    line-height: 1;
+}
+.solutions-stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-top: 2px;
+    letter-spacing: 0.06em;
+}
+
+/* Tile heal flash — when a tile transitions from down → up via auto-heal */
+.aegis-tile.healed {
+    animation: tile-heal 1.2s ease-out;
+}
+@keyframes tile-heal {
+    0%   { box-shadow: 0 0 0 0 var(--success); }
+    50%  { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.3); border-color: var(--success); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}

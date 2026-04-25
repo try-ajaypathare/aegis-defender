@@ -43,6 +43,11 @@ class ServiceRecord:
     sim_started_at: Optional[float] = None
     sim_until: Optional[float] = None              # epoch; None = manual clear
 
+    # Post-heal grace: after a restart, hold status=UP for N seconds even if
+    # real probes fail (transient post-restart probe failures are normal in
+    # real life; in our demo XAMPP may not be running at all).
+    grace_until: float = 0.0
+
     # Stats
     consecutive_failures: int = 0
     uptime_started_at: float = field(default_factory=time.time)
@@ -60,6 +65,9 @@ class ServiceRecord:
                 self.sim_until = None
                 return self.real_status
             return self.sim_status
+        # Post-heal grace window: hold UP through transient probe failures
+        if self.grace_until and time.time() < self.grace_until:
+            return STATUS_UP
         return self.real_status
 
     def effective_latency_ms(self) -> float:
@@ -205,20 +213,33 @@ class ServiceState:
             rec.sim_until = (now + duration_s) if duration_s else None
             return True
 
-    def clear_overlay(self, sid: str) -> bool:
-        """Clear simulation overlay — used by 'restart_service' action."""
+    def clear_overlay(self, sid: str, grace_seconds: float = 30) -> bool:
+        """
+        Clear simulation overlay — used by 'restart_service' action.
+
+        Also forces real_status=UP and applies a `grace_seconds` window during
+        which effective_status() returns UP regardless of real-probe failures.
+        This prevents the rendered tile from immediately flipping back to DOWN
+        when the underlying real service (XAMPP Apache/MySQL) is not running.
+        """
         with self._lock:
             rec = self._services.get(sid)
             if not rec:
                 return False
+            now = time.time()
             rec.sim_status = None
             rec.sim_latency_extra_ms = 0.0
             rec.sim_reason = None
             rec.sim_started_at = None
             rec.sim_until = None
-            rec.restart_count += 1
+            # Force healthy state + grace window
+            rec.real_status = STATUS_UP
+            rec.real_error = None
             rec.consecutive_failures = 0
-            rec.uptime_started_at = time.time()
+            rec.grace_until = now + grace_seconds
+            rec.restart_count += 1
+            rec.uptime_started_at = now
+            rec.last_status_change_ts = now
             return True
 
     def clear_all_overlays(self) -> int:

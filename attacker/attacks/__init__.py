@@ -46,28 +46,31 @@ from attacker.attacks.ntp_drift import NTPDrift
 from attacker.attacks.hardware_warning import HardwareWarning
 
 
+#
+# Curated demo registry — 15 attacks across 5 infra-defender pillars.
+# Removed: combo, fork_bomb, slow_creep, cryptomining_sim
+#   (low demo value / redundant with cpu_spike + ransomware_sim).
+# These classes are still importable above so the historical attacks/ folder
+# stays intact, but they don't appear in the attacker UI.
+#
 REGISTRY: dict[str, Type[BaseAttack]] = {
     # ─────── Performance (resource pressure) ───────
     "cpu_spike":        CPUSpike,
     "ram_flood":        RAMFlood,
     "disk_fill":        DiskFill,
-    "traffic_flood":    TrafficFlood,
-    "combo":            ComboAttack,
-    "fork_bomb":        ForkBomb,
-    "slow_creep":       SlowCreep,
     "memory_leak":      MemoryLeak,
-    "cryptomining_sim": CryptominingSim,
-    "ransomware_sim":   RansomwareSim,
 
     # ─────── Service (Phase 1) ───────
     "service_crash":    ServiceCrashAttack,
 
-    # ─────── Security (Phase 2) ───────
+    # ─────── Security (Phase 2 + repositioned ransomware) ───────
     "ssh_brute_force":  SSHBruteForce,
     "cert_expire":      CertExpire,
     "port_expose":      PortExpose,
+    "ransomware_sim":   RansomwareSim,
 
-    # ─────── Network (Phase 3) ───────
+    # ─────── Network (Phase 3 + DDoS from old traffic_flood) ───────
+    "traffic_flood":    TrafficFlood,
     "dns_blackhole":    DNSBlackhole,
     "gateway_drop":     GatewayDrop,
 

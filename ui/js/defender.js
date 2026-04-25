@@ -123,18 +123,84 @@ function renderEvent(ev) {
     while (list.children.length > 50) list.removeChild(list.lastChild);
 }
 
+// Aegis solution counter — incremented on each successful auto-heal
+let aegisSolutionsToday = 0;
+let solutionsBannerTimeout = null;
+
+// Map action_type → human-friendly description for the banner
+const SOLUTION_LABELS = {
+    restart_service:  { verb: 'Restarted',  what: 'service' },
+    rotate_cert:      { verb: 'Rotated',    what: 'SSL certificate' },
+    close_port:       { verb: 'Closed',     what: 'forbidden port' },
+    block_ip_aegis:   { verb: 'Blocked',    what: 'attacker IP' },
+    block_ip_temporary: { verb: 'Blocked',  what: 'IP (15 min)' },
+    block_ip_permanent: { verb: 'Banned',   what: 'IP permanently' },
+    retry_backup:     { verb: 'Retried',    what: 'failed backup' },
+    sync_ntp:         { verb: 'Synchronized',what: 'NTP clock' },
+    page_oncall:      { verb: 'Paged',      what: 'on-call engineer' },
+    throttle_cpu:     { verb: 'Throttled',  what: 'CPU' },
+    throttle_network: { verb: 'Throttled',  what: 'network' },
+    rate_limit_source:{ verb: 'Rate-limited',what: 'source IP' },
+    sandbox_process:  { verb: 'Sandboxed',  what: 'process' },
+    quarantine_files: { verb: 'Quarantined',what: 'files' },
+    suspend_process:  { verb: 'Suspended',  what: 'process' },
+    kill_process:     { verb: 'Terminated', what: 'process' },
+    kill_and_capture: { verb: 'Terminated + dumped', what: 'process' },
+    rollback_changes: { verb: 'Rolled back',what: 'file changes' },
+    clear_temp:       { verb: 'Cleared',    what: 'temp files' },
+    alert:            { verb: 'Alerted',    what: 'team' },
+};
+
+function showSolutionsBanner(actionType, details, target) {
+    const banner = document.getElementById('solutionsBanner');
+    if (!banner) return;
+
+    const label = SOLUTION_LABELS[actionType] || { verb: actionType.replace(/_/g, ' '), what: '' };
+    const message = `${label.verb} ${label.what}`.trim();
+
+    document.getElementById('solutionsMessage').textContent = message;
+    document.getElementById('solutionsMeta').textContent = details || target || actionType;
+
+    aegisSolutionsToday++;
+    document.getElementById('solutionsCountToday').textContent = aegisSolutionsToday;
+
+    banner.style.display = 'grid';
+    banner.classList.remove('fading');
+    // Force reflow to restart animation
+    void banner.offsetWidth;
+    banner.classList.remove('fading');
+
+    // Auto-fade after 6s
+    if (solutionsBannerTimeout) clearTimeout(solutionsBannerTimeout);
+    solutionsBannerTimeout = setTimeout(() => {
+        banner.classList.add('fading');
+        setTimeout(() => { banner.style.display = 'none'; banner.classList.remove('fading'); }, 600);
+    }, 6000);
+}
+
 function renderAction(a) {
     const list = document.getElementById('actionList');
+    const ts = a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    const actionType = (a.action_type || a.action || 'ACTION').toLowerCase();
+    const details = a.details || a.message || a.target || a.reason || 'executed';
+
+    // ---- Show prominent solutions banner for non-trivial actions ----
+    const trivial = ['none', 'log_only', 'noop'];
+    const success = a.success !== false;  // undefined or true counts
+    if (success && !trivial.includes(actionType)) {
+        showSolutionsBanner(actionType, details, a.target || a.target_id);
+        // Toast as well
+        toast(`Aegis: ${(SOLUTION_LABELS[actionType]?.verb || actionType)} ${SOLUTION_LABELS[actionType]?.what || ''}`.trim(), 'success');
+    }
+
+    // ---- Append to Recent Actions list ----
     if (!list) return;
     clearEmpty(list);
     const li = document.createElement('li');
     li.className = 'event-item';
-    const ts = a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-    const actionType = (a.action_type || a.action || 'ACTION').toUpperCase();
-    const details = a.details || a.target || a.reason || 'executed';
     li.innerHTML = `
         <span class="event-time">${escapeHtml(ts)}</span>
-        <span class="event-tag action">${escapeHtml(actionType)}</span>
+        <span class="event-tag action">${escapeHtml(actionType.toUpperCase())}</span>
         <span class="event-msg">${escapeHtml(details)}</span>
     `;
     list.insertBefore(li, list.firstChild);

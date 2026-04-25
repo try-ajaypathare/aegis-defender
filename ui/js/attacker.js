@@ -84,16 +84,11 @@ const ATTACK_PARAM_META = {
 };
 
 const CATEGORY_META = {
-    performance:         { icon: 'activity',     label: 'Performance',           order: 1 },
+    performance:         { icon: 'activity',     label: 'Performance Pressure',  order: 1 },
     service:             { icon: 'server',       label: 'Service Health',        order: 2 },
     security:            { icon: 'shield',       label: 'Security',              order: 3 },
     network:             { icon: 'globe',        label: 'Network',               order: 4 },
     infra:               { icon: 'database',     label: 'Infrastructure',        order: 5 },
-    resource_exhaustion: { icon: 'package',      label: 'Resource Exhaustion',   order: 6 },
-    ai_test:             { icon: 'brain',        label: 'AI Evasion Tests',      order: 7 },
-    security_threat:     { icon: 'skull',        label: 'Malware Sims',          order: 8 },
-    io:                  { icon: 'hard-drive',   label: 'I/O',                   order: 9 },
-    advanced:            { icon: 'terminal',     label: 'Advanced',              order: 10 },
 };
 
 let allAttacks = [];

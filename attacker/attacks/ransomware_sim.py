@@ -8,7 +8,7 @@ from attacker.base_attack import BaseAttack
 
 class RansomwareSim(BaseAttack):
     name = "ransomware_sim"
-    category = "security_threat"
+    category = "security"
     description = "[SIM] Simulated ransomware I/O pattern — no real files touched"
 
     def _run(self) -> None:
